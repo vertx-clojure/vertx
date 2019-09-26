@@ -7,6 +7,8 @@
 (ns vertx.web
   "High level api for http servers."
   (:require [promesa.core :as p]
+            [sieppari.core :as sp]
+            [reitit.core :as r]
             [vertx.http :as vxh]
             [vertx.util :as vu])
   (:import
@@ -26,10 +28,8 @@
 
 (declare -handle-response)
 (declare -handle-body)
+(declare -run-handler)
 (declare ->RequestContext)
-
-(def ^:const ctx-internal-key
-  "$$$clojure.vertx.state$$$")
 
 ;; --- Public Api
 
@@ -42,20 +42,22 @@
      (.handler route (BodyHandler/create true))
      (.handler route (reify Handler
                        (handle [_ context]
-                         (let [req (.request ^RoutingContext context)
-                               res (.response ^RoutingContext context)
-                               ctx (->RequestContext ctx-internal-key
-                                                     context req res)]
-                           (p/bind (p/do! (f ctx))
-                                   (fn [res] (-handle-response res ctx)))))))
+                         (let [^HttpServerRequest req (.request ^RoutingContext context)
+                               ^HttpServerResponse res (.response ^RoutingContext context)
+                               method (-> req .rawMethod .toLowerCase keyword)
+                               path (.path req)
+                               ctx (->RequestContext method path req res)]
+                           (p/then' (-run-handler f ctx)
+                                    (fn [res] (-handle-response res ctx)))))))
      router)))
 
-;; (defn wrap-routes
-;;   ([vsm routes] (wrap-routes vsm routes nil))
-;;   ([vsm routes opts]
-;;    (letfn [(handler [ctx]
-;;              )]
-;;      (wrap vsm handler opts))))
+(declare router-handler)
+
+(defn wrap-router
+  ([vsm router] (wrap-router vsm router nil))
+  ([vsm router opts]
+   (as-> #(router-handler router % opts) handler
+     (wrap vsm handler opts))))
 
 ;; --- Impl
 
@@ -65,39 +67,10 @@
 (defprotocol IAsyncResponse
   (-handle-response [_ _]))
 
-(deftype RequestContext [^String key
-                         ^RoutingContext ctx
-                         ^HttpServerRequest req
-                         ^HttpServerResponse res]
-  clojure.lang.IDeref
-  (deref [_]
-    (.get ctx key))
+(defprotocol IRunHandler
+  (-run-handler [_ ctx]))
 
-  clojure.lang.IAtom
-  (reset [_ val]
-    (.put ctx key val))
-  (swap [self f]
-    (.reset self (f (.deref self))))
-  (swap [self f x]
-    (.reset self (f (.deref self) x)))
-  (swap [self f x y]
-    (.reset self (f (.deref self) x y)))
-  (swap [self f x y more]
-    (.reset self (apply f (.deref self) x y more)))
-
-  clojure.lang.ILookup
-  (valAt [self k]
-    (case k
-      (:req :request) req
-      (:res :response) res
-      :method (.rawMethod req)
-      ;; :query-params (get-memoized-query-params req self)
-      ;; :headers (get-memoized-headers req self)
-      ;; :cookies (get-memoized-cookies req self)
-      nil))
-
-  (valAt [this k default]
-    (or (.valAt this k) default)))
+(defrecord RequestContext [method path request response])
 
 (extend-protocol IAsyncResponse
   clojure.lang.IPersistentMap
@@ -113,4 +86,36 @@
   (-handle-body [data res]
     (.end ^HttpServerResponse res data)))
 
+(extend-protocol IRunHandler
+  clojure.lang.Fn
+  (-run-handler [f ctx]
+    (p/do! (f ctx)))
 
+  clojure.lang.IPersistentVector
+  (-run-handler [v ctx]
+    (let [d (p/deferred)]
+      (sp/execute v ctx #(p/resolve! d %) #(p/reject! d %))
+      d)))
+
+(def noop (constantly nil))
+
+(defn- default-handler
+  [ctx]
+  (if-let [match (::match ctx)]
+    {:status 405 :body ""}
+    {:status 404 :body ""}))
+
+(defn- error-handler
+  [ctx]
+  {:status 500 :body ""})
+
+(defn- router-handler
+  [router {:keys [path method] :as ctx} options]
+  (try
+    (if-let [{:keys [data path-params] :as match} (r/match-by-path router path)]
+      (let [handler (get data method noop)
+            ctx (assoc ctx ::match match :path-params path-params)]
+        (or (handler ctx) (default-handler ctx)))
+      (default-handler ctx))
+    (catch Throwable e
+      (error-handler ctx e))))

@@ -4,6 +4,7 @@
         metosin/reitit-core {:mvn/version "0.3.9"}
         mount/mount {:mvn/version "0.1.16"}
         environ/environ {:mvn/version "1.1.0"}
+        metosin/sieppari {:mvn/version "0.0.0-alpha7"}
         io.vertx/vertx-core {:mvn/version "3.8.1"}
         io.vertx/vertx-web {:mvn/version "3.8.1"}
         }

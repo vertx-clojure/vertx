@@ -5,6 +5,7 @@
    [clojure.walk :refer [macroexpand-all]]
    [mount.core :as mount :refer [defstate]]
    [promesa.core :as p]
+   [reitit.core :as rt]
    [vertx.core :as vx]
    [vertx.eventbus :as vxe]
    [vertx.http :as vxh]
@@ -12,7 +13,6 @@
   (:import
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse))
-
 
 (defstate system
   :start (vx/system)
@@ -38,52 +38,54 @@
 
 ;; --- Http Server Verticle
 
-(defn simple-http-handler
-  [request]
-  (let [^HttpServerResponse response (.response ^HttpServerRequest request)]
-    (.setStatusCode response 200)
-    (.end response "Hello world\n")))
-
 (def http-verticle
-  (letfn [(on-start [ctx state]
-            (locking system
-              (println (str "http-verticle: on-start " (thr-name))))
-            (let [server (vxh/server (.owner ctx) {:handler simple-http-handler :port 2019})]
-              {::stop #(.close server)}))
-          (on-stop [ctx state]
-            (locking system
-              (println (str "http-verticle: on-start " (thr-name)))))]
-    (vx/verticle {:on-start on-start
-                  :on-stop on-stop})))
+  (letfn [(handler [req]
+            (let [^HttpServerResponse response (.response ^HttpServerRequest req)]
+              (.setStatusCode response 200)
+              (.end response "Hello world\n")))
 
-(defstate http-server-verticle
+          (on-start [ctx state]
+            (let [server (vxh/server (.owner ctx) {:handler handler :port 2019})]
+              {::stop #(.close server)}))]
+
+    (vx/verticle {:on-start on-start})))
+
+(defstate http-verticle*
   :start (vx/deploy! system http-verticle {:instances 1}))
 
 ;; --- Http Web Handler
 
-(defn simple-web-handler
-  [ctx]
-  {:status 200
-   :body "hello world web\n"})
-
 (def web-verticle
-  (letfn [(on-init [ctx]
-            (println "web-verticle: on-init " (thr-name)))
+  (letfn [(handler [ctx]
+            {:status 200
+             :body "hello world web\n"})
 
           (on-start [ctx state]
-            (locking system
-              (println (str "web-verticle: on-start " (thr-name))))
-            (let [handler (vxw/wrap ctx simple-web-handler)
+            (let [handler (vxw/wrap ctx handler)
                   server (vxh/server ctx {:handler handler :port 2020})]
-              {::stop #(.close server)}))
+              {::stop #(.close server)}))]
 
-          (on-stop [ctx state]
-            (prn "web-verticle: on-stop " (thr-name))
-            (prn "web-verticle: on-stop ... " state))]
+    (vx/verticle {:on-start on-start})))
 
-    (vx/verticle {:on-init on-init
-                  :on-start on-start
-                  :on-stop on-stop})))
+(defstate web-verticle*
+  :start (vx/deploy! system web-verticle {:instances 1}))
 
-(defstate web-server-verticle
-  :start (vx/deploy! system web-verticle {:instances 4}))
+;; --- Web Router Verticle
+
+(def web-router-verticle
+  (letfn [(handler [ctx]
+            (let [params (:path-params ctx)]
+              {:status 200
+               :body (str "hello " (:name params) "\n")}))
+
+          (on-start [ctx state]
+            (let [routes [["/foo/bar/:name" {:get handler}]]
+                  router (rt/router routes)
+                  handler (vxw/wrap-router ctx router)
+                  server (vxh/server ctx {:handler handler :port 2021})]
+              {::stop #(.close server)}))]
+
+    (vx/verticle {:on-start on-start})))
+
+(defstate web-router-verticle*
+  :start (vx/deploy! system web-router-verticle {:instances 1}))
