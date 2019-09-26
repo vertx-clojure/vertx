@@ -57,9 +57,9 @@
 
 (defn- build-verticle
   [{:keys [on-init on-start on-stop on-error]
-    :or {on-error identity
-         on-init identity
-         on-stop identity}}]
+    :or {on-error (constantly nil)
+         on-init (constantly nil)
+         on-stop (constantly nil)}}]
   (let [vsm (volatile! nil)
         ctx (volatile! nil)
         lst (volatile! nil)]

@@ -72,6 +72,14 @@
 
 ;; --- Web Router Verticle
 
+(def sample-interceptor
+  {:enter (fn [data]
+            ;; (prn "sample-interceptor:enter")
+            (p/deferred data))
+   :leave (fn [data]
+            ;; (prn "sample-interceptor:leave")
+            (p/deferred data))})
+
 (def web-router-verticle
   (letfn [(handler [ctx]
             (let [params (:path-params ctx)]
@@ -79,7 +87,8 @@
                :body (str "hello " (:name params) "\n")}))
 
           (on-start [ctx state]
-            (let [routes [["/foo/bar/:name" {:get handler}]]
+            (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor]
+                                             :get handler}]]
                   router (rt/router routes)
                   handler (vxw/wrap-router ctx router)
                   server (vxh/server ctx {:handler handler :port 2021})]
@@ -88,4 +97,4 @@
     (vx/verticle {:on-start on-start})))
 
 (defstate web-router-verticle*
-  :start (vx/deploy! system web-router-verticle {:instances 1}))
+  :start (vx/deploy! system web-router-verticle {:instances 4}))

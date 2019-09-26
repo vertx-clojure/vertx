@@ -8,10 +8,12 @@
   "High level api for http servers."
   (:require [promesa.core :as p]
             [sieppari.core :as sp]
+            [sieppari.async.promesa]
             [reitit.core :as r]
             [vertx.http :as vxh]
             [vertx.util :as vu])
   (:import
+   clojure.lang.Keyword
    io.vertx.core.Vertx
    io.vertx.core.Handler
    io.vertx.core.Future
@@ -42,13 +44,12 @@
      (.handler route (BodyHandler/create true))
      (.handler route (reify Handler
                        (handle [_ context]
-                         (let [^HttpServerRequest req (.request ^RoutingContext context)
-                               ^HttpServerResponse res (.response ^RoutingContext context)
-                               method (-> req .rawMethod .toLowerCase keyword)
-                               path (.path req)
-                               ctx (->RequestContext method path req res)]
-                           (p/then' (-run-handler f ctx)
-                                    (fn [res] (-handle-response res ctx)))))))
+                         (let [^HttpServerRequest request (.request ^RoutingContext context)
+                               ^HttpServerResponse response (.response ^RoutingContext context)
+                               method (-> request .rawMethod .toLowerCase keyword)
+                               path (.path request)
+                               ctx (->RequestContext method path request response context)]
+                           (p/then' (-run-handler f ctx) #(-handle-response % ctx))))))
      router)))
 
 (declare router-handler)
@@ -61,6 +62,12 @@
 
 ;; --- Impl
 
+(defrecord RequestContext [^Keyword method
+                           ^String path
+                           ^HttpServerRequest request
+                           ^HttpServerRequest response
+                           ^RoutingContext context])
+
 (defprotocol IAsyncBody
   (-handle-body [_ _]))
 
@@ -69,8 +76,6 @@
 
 (defprotocol IRunHandler
   (-run-handler [_ ctx]))
-
-(defrecord RequestContext [method path request response])
 
 (extend-protocol IAsyncResponse
   clojure.lang.IPersistentMap
@@ -105,17 +110,18 @@
     {:status 405 :body ""}
     {:status 404 :body ""}))
 
-(defn- error-handler
-  [ctx]
-  {:status 500 :body ""})
+;; (defn- error-handler
+;;   [ctx]
+;;   {:status 500 :body ""})
 
 (defn- router-handler
   [router {:keys [path method] :as ctx} options]
-  (try
-    (if-let [{:keys [data path-params] :as match} (r/match-by-path router path)]
-      (let [handler (get data method noop)
-            ctx (assoc ctx ::match match :path-params path-params)]
-        (or (handler ctx) (default-handler ctx)))
-      (default-handler ctx))
-    (catch Throwable e
-      (error-handler ctx e))))
+  (if-let [{:keys [data path-params] :as match} (r/match-by-path router path)]
+    (let [handler (get data method)
+          interceptors (get data :interceptors)
+          ctx (assoc ctx ::match match :path-params path-params)]
+      (cond
+        (nil? handler) (default-handler ctx)
+        (empty? interceptors) (handler ctx)
+        :else (-run-handler (conj interceptors handler) ctx)))
+    (default-handler ctx)))
