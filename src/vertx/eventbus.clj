@@ -20,7 +20,7 @@
 
 ;; --- Public Api
 
-(defn consume!
+(defn consumer
   [vsm topic f]
   (let [^EventBus bus (resolve-eventbus vsm)
         ^MessageConsumer cons (.consumer bus ^String topic)]

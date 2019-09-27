@@ -17,15 +17,6 @@
 
 (declare thr-name)
 
-;; --- Config
-
-(def config
-  {:system {:threads 4}
-   :verticle/http {:system (ig/ref :system) :instances 1}
-   :verticle/web {:system (ig/ref :system) :instances 1}
-   :verticle/web-router {:system (ig/ref :system) :instances 1}
-   :verticle/echo {:system (ig/ref :system) :instances 1}})
-
 ;; --- System
 
 (defmethod ig/init-key :system
@@ -36,7 +27,7 @@
   [_ system]
   (.close system))
 
-;; --- Event Bus Verticle
+;; --- Echo Verticle (using eventbus)
 
 (def echo-verticle
   (letfn [(on-message [message]
@@ -44,9 +35,17 @@
                              "on" (thr-name)))
             (inc (.body message)))
           (on-start [ctx]
-            (vxe/consume! ctx "test.topic" on-message))]
+            (vxe/consumer ctx "test.topic" on-message))]
 
     (vx/verticle {:on-start on-start})))
+
+(defmethod ig/init-key :verticle/echo
+  [_ {:keys [system] :as options}]
+  @(vx/deploy! system echo-verticle options))
+
+(defmethod ig/halt-key! :verticle/echo
+  [_ disposable]
+  (.close disposable))
 
 (defmethod ig/init-key :verticle/echo
   [_ {:keys [system] :as options}]
@@ -152,10 +151,18 @@
   [_ server]
   (pohjavirta/stop server))
 
+;; --- Config
 
-;; --- Helpers
+(def config
+  {:system {:threads 4}
+   :verticle/http {:system (ig/ref :system) :instances 1}
+   :verticle/web {:system (ig/ref :system) :instances 1}
+   :verticle/web-router {:system (ig/ref :system) :instances 1}
+   :verticle/echo {:system (ig/ref :system) :instances 1}})
 
 (def state nil)
+
+;; --- Repl
 
 (defn start
   []
@@ -174,6 +181,8 @@
   []
   (stop)
   (r/refresh :after 'user/start))
+
+;; --- Helpers
 
 (defn thr-name
   []
