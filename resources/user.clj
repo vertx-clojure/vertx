@@ -33,7 +33,7 @@
   (letfn [(on-message [message]
             (println (pr-str "received:" (.body message)
                              "on" (thr-name)))
-            (inc (.body message)))
+            (.body message))
           (on-start [ctx]
             (vxe/consumer ctx "test.topic" on-message))]
 

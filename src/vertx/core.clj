@@ -5,7 +5,9 @@
 ;; Copyright (c) 2019 Andrey Antukh <niwi@niwi.nz>
 
 (ns vertx.core
-  (:require [promesa.core :as p]
+  (:require [clojure.spec.alpha :as s]
+            [promesa.core :as p]
+            [vertx.eventbus :as vxe]
             [vertx.util :as vu])
   (:import io.vertx.core.Vertx
            io.vertx.core.VertxOptions
@@ -20,23 +22,44 @@
 (declare build-verticle)
 (declare build-disposable)
 
+;; --- Protocols
+
+(definterface IVerticle)
+
 ;; --- Public Api
+
+(s/def :system/threads pos?)
+(s/def ::system-params
+  (s/keys :opt-un [:system/threads]))
 
 (defn system
   "Creates a new vertx actor system instance."
   ([] (Vertx/vertx))
   ([opts]
-   (let [^VertxOptions opts (opts->vertx-options opts)]
-     (Vertx/vertx opts))))
+   (s/assert ::system-params opts)
+   (let [^VertxOptions opts (opts->vertx-options opts)
+         ^Vertx vsm (Vertx/vertx opts)]
+     (vxe/configure! vsm opts)
+     vsm)))
+
+(s/def :verticle/on-start fn?)
+(s/def :verticle/on-stop fn?)
+(s/def ::verticle-params
+  (s/keys :req-un [:verticle/on-start]
+          :opt-un [:verticle/on-stop]))
 
 (defn verticle
   [options]
-  (reify Supplier
+  (s/assert ::verticle-params options)
+  (reify
+    IVerticle
+    Supplier
     (get [_] (build-verticle options))))
 
 (defn deploy!
   ([vsm supplier] (deploy! vsm supplier nil))
   ([vsm supplier opts]
+   (assert (instance? IVerticle supplier))
    (let [d (p/deferred)
          o (opts->deployment-options opts)]
      (.deployVerticle ^Vertx vsm
@@ -89,6 +112,9 @@
 (defn- build-disposable
   [vsm id]
   (reify
+    clojure.lang.IDeref
+    (deref [_] id)
+
     clojure.lang.IFn
     (invoke [_] (undeploy! vsm id))
 

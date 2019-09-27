@@ -14,9 +14,12 @@
            io.vertx.core.eventbus.MessageConsumer
            io.vertx.core.eventbus.DeliveryOptions
            io.vertx.core.eventbus.EventBus
+           io.vertx.core.eventbus.MessageCodec
            java.util.function.Supplier))
 
+(declare opts->delivery-opts)
 (declare resolve-eventbus)
+(declare build-message-codec)
 
 ;; --- Public Api
 
@@ -30,34 +33,49 @@
                        (-> (p/do! (f msg))
                            (p/handle (fn [res err]
                                        (.resume cons)
-                                       (.reply msg (or res err))))))))
+                                       (.reply msg (or res err)
+                                               (opts->delivery-opts {}))))))))
     cons))
 
 (defn publish!
-  [vsm topic message]
-  (let [bus (resolve-eventbus vsm)]
-    (.publish ^EventBus bus
-              ^String topic
-              ^Object message)
-    nil))
+  ([vsm topic msg] (publish! vsm topic msg {}))
+  ([vsm topic msg opts]
+   (let [bus (resolve-eventbus vsm)
+         opts (opts->delivery-opts opts)]
+     (.publish ^EventBus bus
+               ^String topic
+               ^Object msg
+               ^DeliveryOptions opts)
+     nil)))
 
 (defn send!
-  [vsm topic message]
-  (let [bus (resolve-eventbus vsm)]
-    (.send ^EventBus bus
-           ^String topic
-           ^Object message)
-    nil))
+  ([vsm topic msg] (send! vsm topic msg {}))
+  ([vsm topic msg opts]
+   (let [bus (resolve-eventbus vsm)
+         opts (opts->delivery-opts opts)]
+     (.send ^EventBus bus
+            ^String topic
+            ^Object msg
+            ^DeliveryOptions opts)
+     nil)))
 
 (defn request!
-  [vsm topic message]
-  (let [bus (resolve-eventbus vsm)
-        d (p/deferred)]
-    (.request ^EventBus bus
-              ^String topic
-              ^Object message
-              ^Handler (vu/deferred->handler d))
-    d))
+  ([vsm topic msg] (request! vsm topic msg {}))
+  ([vsm topic msg opts]
+   (let [bus (resolve-eventbus vsm)
+         opts (opts->delivery-opts opts)
+         d (p/deferred)]
+     (.request ^EventBus bus
+               ^String topic
+               ^Object msg
+               ^DeliveryOptions opts
+               ^Handler (vu/deferred->handler d))
+     d)))
+
+(defn configure!
+  [vsm opts]
+  (let [^EventBus bus (resolve-eventbus vsm)]
+    (.registerCodec bus (build-message-codec))))
 
 ;; TODO: add opts
 
@@ -74,4 +92,21 @@
     (instance? Context o) (resolve-eventbus (.owner ^Context o))
     (instance? EventBus o) o
     :else (throw (ex-info "unexpected argument" {}))))
+
+(defn- build-message-codec
+  []
+  (reify MessageCodec
+    (encodeToWire [_ buffer data])
+    (decodeFromWire [_ pos buffer])
+    (transform [_ data] data)
+    (name [_] "clj:msgpack")
+    (^byte systemCodecID [_] (byte -1))))
+
+(defn- opts->delivery-opts
+  [{:keys [codec local?]}]
+  (let [^DeliveryOptions opts (DeliveryOptions.)]
+    (.setCodecName opts (or codec "clj:msgpack"))
+    (when local? (.setLocalOnly opts true))
+    opts))
+
 
