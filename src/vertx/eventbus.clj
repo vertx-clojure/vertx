@@ -9,19 +9,20 @@
             [vertx.util :as vu])
   (:import io.vertx.core.Vertx
            io.vertx.core.Handler
+           io.vertx.core.Context
            io.vertx.core.eventbus.Message
            io.vertx.core.eventbus.MessageConsumer
            io.vertx.core.eventbus.DeliveryOptions
            io.vertx.core.eventbus.EventBus
            java.util.function.Supplier))
 
-(declare get-eventbus)
+(declare resolve-eventbus)
 
 ;; --- Public Api
 
 (defn consume!
   [vsm topic f]
-  (let [^EventBus bus (get-eventbus vsm)
+  (let [^EventBus bus (resolve-eventbus vsm)
         ^MessageConsumer cons (.consumer bus ^String topic)]
     (.handler cons (reify Handler
                      (handle [_ msg]
@@ -34,7 +35,7 @@
 
 (defn publish!
   [vsm topic message]
-  (let [bus (get-eventbus vsm)]
+  (let [bus (resolve-eventbus vsm)]
     (.publish ^EventBus bus
               ^String topic
               ^Object message)
@@ -42,7 +43,7 @@
 
 (defn send!
   [vsm topic message]
-  (let [bus (get-eventbus vsm)]
+  (let [bus (resolve-eventbus vsm)]
     (.send ^EventBus bus
            ^String topic
            ^Object message)
@@ -50,7 +51,7 @@
 
 (defn request!
   [vsm topic message]
-  (let [bus (get-eventbus vsm)
+  (let [bus (resolve-eventbus vsm)
         d (p/deferred)]
     (.request ^EventBus bus
               ^String topic
@@ -66,10 +67,11 @@
 
 ;; --- Impl
 
-(defn- get-eventbus
+(defn- resolve-eventbus
   [o]
   (cond
     (instance? Vertx o) (.eventBus ^Vertx o)
+    (instance? Context o) (resolve-eventbus (.owner ^Context o))
     (instance? EventBus o) o
     :else (throw (ex-info "unexpected argument" {}))))
 
