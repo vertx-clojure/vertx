@@ -52,6 +52,7 @@
     (.setReuseAddress opts true)
     (.setReusePort opts true)
     (.setTcpNoDelay opts true)
+    (.setTcpFastOpen opts true)
     (when host (.setHost opts host))
     (when port (.setPort opts port))
     opts))

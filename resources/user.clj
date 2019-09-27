@@ -4,6 +4,7 @@
    [clojure.tools.namespace.repl :as r]
    [clojure.walk :refer [macroexpand-all]]
    [mount.core :as mount :refer [defstate]]
+   [pohjavirta.server :as server]
    [promesa.core :as p]
    [reitit.core :as rt]
    [vertx.core :as vx]
@@ -15,7 +16,7 @@
    io.vertx.core.http.HttpServerResponse))
 
 (defstate system
-  :start (vx/system)
+  :start (vx/system {:threads 4})
   :stop (.close system))
 
 (defn thr-name
@@ -42,16 +43,15 @@
   (letfn [(handler [req]
             (let [^HttpServerResponse response (.response ^HttpServerRequest req)]
               (.setStatusCode response 200)
-              (.end response "Hello world\n")))
+              (.end response "Hello world vtx\n")))
 
           (on-start [ctx state]
-            (let [server (vxh/server (.owner ctx) {:handler handler :port 2019})]
+            (let [server (vxh/server ctx {:handler handler :port 2019})]
               {::stop #(.close server)}))]
-
     (vx/verticle {:on-start on-start})))
 
 (defstate http-verticle*
-  :start (vx/deploy! system http-verticle {:instances 1}))
+  :start (vx/deploy! system http-verticle {:instances 4}))
 
 ;; --- Http Web Handler
 
@@ -68,33 +68,47 @@
     (vx/verticle {:on-start on-start})))
 
 (defstate web-verticle*
-  :start (vx/deploy! system web-verticle {:instances 1}))
+  :start (vx/deploy! system web-verticle {:instances 4}))
+
+;; --- pohjavirta
+
+(defn handler [req]
+  (let [method (:request-method req)
+        path (:uri req)]
+    {:status 200
+     :body "hello world poh\n"}))
+
+(defstate pohjavirta
+  :start (let [instance (server/create #'handler {:port 8080 :io-threads 4})]
+           (server/start instance)
+           instance)
+  :stop (server/stop pohjavirta))
 
 ;; --- Web Router Verticle
 
-(def sample-interceptor
-  {:enter (fn [data]
-            ;; (prn "sample-interceptor:enter")
-            (p/deferred data))
-   :leave (fn [data]
-            ;; (prn "sample-interceptor:leave")
-            (p/deferred data))})
+;; (def sample-interceptor
+;;   {:enter (fn [data]
+;;             ;; (prn "sample-interceptor:enter")
+;;             (p/deferred data))
+;;    :leave (fn [data]
+;;             ;; (prn "sample-interceptor:leave")
+;;             (p/deferred data))})
 
-(def web-router-verticle
-  (letfn [(handler [ctx]
-            (let [params (:path-params ctx)]
-              {:status 200
-               :body (str "hello " (:name params) "\n")}))
+;; (def web-router-verticle
+;;   (letfn [(handler [ctx]
+;;             (let [params (:path-params ctx)]
+;;               {:status 200
+;;                :body (str "hello " (:name params) "\n")}))
 
-          (on-start [ctx state]
-            (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor]
-                                             :get handler}]]
-                  router (rt/router routes)
-                  handler (vxw/wrap-router ctx router)
-                  server (vxh/server ctx {:handler handler :port 2021})]
-              {::stop #(.close server)}))]
+;;           (on-start [ctx state]
+;;             (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor]
+;;                                              :get handler}]]
+;;                   router (rt/router routes)
+;;                   handler (vxw/wrap-router ctx router)
+;;                   server (vxh/server ctx {:handler handler :port 2021})]
+;;               {::stop #(.close server)}))]
 
-    (vx/verticle {:on-start on-start})))
+;;     (vx/verticle {:on-start on-start})))
 
-(defstate web-router-verticle*
-  :start (vx/deploy! system web-router-verticle {:instances 4}))
+;; (defstate web-router-verticle*
+;;   :start (vx/deploy! system web-router-verticle {:instances 4}))

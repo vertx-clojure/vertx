@@ -78,6 +78,10 @@
   (-run-handler [_ ctx]))
 
 (extend-protocol IAsyncResponse
+  ;; java.util.concurrent.CompletableFuture
+  ;; (-handle-response [data ctx]
+  ;;   (p/then' data #(-handle-response % ctx)))
+
   clojure.lang.IPersistentMap
   (-handle-response [data ctx]
     (let [status (or (:status data) 200)
@@ -94,7 +98,7 @@
 (extend-protocol IRunHandler
   clojure.lang.Fn
   (-run-handler [f ctx]
-    (p/do! (f ctx)))
+    (f ctx))
 
   clojure.lang.IPersistentVector
   (-run-handler [v ctx]

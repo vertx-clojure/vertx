@@ -8,6 +8,7 @@
   (:require [promesa.core :as p]
             [vertx.util :as vu])
   (:import io.vertx.core.Vertx
+           io.vertx.core.VertxOptions
            io.vertx.core.Verticle
            io.vertx.core.Handler
            io.vertx.core.Future
@@ -16,6 +17,7 @@
 
 (declare ->VerticleSupplier)
 (declare opts->deployment-options)
+(declare opts->vertx-options)
 (declare build-verticle)
 
 ;; --- Public Api
@@ -24,7 +26,8 @@
   "Creates a new vertx actor system instance."
   ([] (Vertx/vertx))
   ([opts]
-   (throw (ex-info "not implemented" {}))))
+   (let [^VertxOptions opts (opts->vertx-options opts)]
+     (Vertx/vertx opts))))
 
 (defn verticle
   [options]
@@ -95,6 +98,12 @@
   (let [opts (DeploymentOptions.)]
     (when instances (.setInstances opts (int instances)))
     (when worker? (.setWorker opts worker?))
+    opts))
+
+(defn- opts->vertx-options
+  [{:keys [threads]}]
+  (let [opts (VertxOptions.)]
+    (when threads (.setEventLoopPoolSize opts (int threads)))
     opts))
 
 

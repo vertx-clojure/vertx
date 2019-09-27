@@ -13,6 +13,7 @@
  :aliases
  {:dev
   {:extra-deps {com.bhauman/rebel-readline {:mvn/version "0.1.4"}
+                metosin/pohjavirta {:mvn/version "0.0.1-alpha4"}
                 org.clojure/tools.namespace {:mvn/version "0.3.1"}
                 badigeon/badigeon {:git/url "https://github.com/EwenG/badigeon.git"
                                    :sha "db25a8f7053dec65afeb7fb0d1a5351dcdbe78bd"
