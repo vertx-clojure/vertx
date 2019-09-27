@@ -1,18 +1,17 @@
-{:deps {org.clojure/clojure {:mvn/version "1.10.1"}
-        org.clojure/tools.logging {:mvn/version "0.3.1"}
+{:deps {org.clojure/tools.logging {:mvn/version "0.3.1"}
         funcool/promesa {:mvn/version "4.0.0-SNAPSHOT"}
         metosin/reitit-core {:mvn/version "0.3.9"}
-        mount/mount {:mvn/version "0.1.16"}
-        environ/environ {:mvn/version "1.1.0"}
         metosin/sieppari {:mvn/version "0.0.0-alpha7"}
-        io.netty/netty-transport-native-epoll {:mvn/version "4.1.39.Final"}
         io.vertx/vertx-core {:mvn/version "3.8.1"}
-        io.vertx/vertx-web {:mvn/version "3.8.1"}
-        }
+        io.vertx/vertx-web {:mvn/version "3.8.1"}}
  :paths ["src" "resources"]
  :aliases
  {:dev
   {:extra-deps {com.bhauman/rebel-readline {:mvn/version "0.1.4"}
+                org.clojure/clojure {:mvn/version "1.10.1"}
+                io.netty/netty-transport-native-epoll {:mvn/version "4.1.39.Final"}
+                environ/environ {:mvn/version "1.1.0"}
+                integrant/integrant {:mvn/version "0.7.0"}
                 metosin/pohjavirta {:mvn/version "0.0.1-alpha4"}
                 org.clojure/tools.namespace {:mvn/version "0.3.1"}
                 badigeon/badigeon {:git/url "https://github.com/EwenG/badigeon.git"
