@@ -22,13 +22,12 @@
 
 (declare opts->http-server-options)
 (declare resolve-handler)
-(declare resolve-system)
 
 ;; --- Public Api
 
 (defn server
   [vsm {:keys [handler] :as options}]
-  (let [^Vertx vsm (resolve-system vsm)
+  (let [^Vertx vsm (vu/resolve-system vsm)
         ^HttpServerOptions opts (opts->http-server-options options)
         ^HttpServer srv (.createHttpServer vsm opts)
         ^Handler handler (resolve-handler handler)]
@@ -38,13 +37,6 @@
     srv))
 
 ;; --- Impl
-
-(defn resolve-system
-  [o]
-  (cond
-    (instance? Vertx o) o
-    (instance? Context o) (.owner ^Context o)
-    :else (throw (ex-info "unexpected parameters" {}))))
 
 (defn- opts->http-server-options
   [{:keys [host port]}]

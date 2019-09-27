@@ -38,7 +38,7 @@
 (defn wrap
   ([vsm f] (wrap vsm f nil))
   ([vsm f opts]
-   (let [^Vertx vsm (vxh/resolve-system vsm)
+   (let [^Vertx vsm (vu/resolve-system vsm)
          ^Router router (Router/router vsm)
          ^Route route (.route router)]
      (.handler route (BodyHandler/create true))

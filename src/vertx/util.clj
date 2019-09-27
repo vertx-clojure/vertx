@@ -8,8 +8,16 @@
   (:require [promesa.core :as p])
   (:import io.vertx.core.Vertx
            io.vertx.core.Handler
+           io.vertx.core.Context
            io.vertx.core.AsyncResult
            java.util.function.Supplier))
+
+(defn resolve-system
+  [o]
+  (cond
+    (instance? Vertx o) o
+    (instance? Context o) (.owner ^Context o)
+    :else (throw (ex-info "unexpected parameters" {}))))
 
 (defn fn->supplier
   [f]
