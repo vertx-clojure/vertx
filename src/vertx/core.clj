@@ -15,10 +15,10 @@
            io.vertx.core.DeploymentOptions
            java.util.function.Supplier))
 
-(declare ->VerticleSupplier)
 (declare opts->deployment-options)
 (declare opts->vertx-options)
 (declare build-verticle)
+(declare build-disposable)
 
 ;; --- Public Api
 
@@ -31,7 +31,8 @@
 
 (defn verticle
   [options]
-  (->VerticleSupplier #(build-verticle options)))
+  (reify Supplier
+    (get [_] (build-verticle options))))
 
 (defn deploy!
   ([vsm supplier] (deploy! vsm supplier nil))
@@ -42,7 +43,7 @@
                       ^Supplier supplier
                       ^DeploymentOptions o
                       ^Handler (vu/deferred->handler d))
-     d)))
+     (p/then' d (fn [id] (build-disposable vsm id))))))
 
 (defn undeploy!
   [vsm id]
@@ -54,14 +55,9 @@
 
 ;; --- Impl
 
-(deftype VerticleSupplier [factory]
-  Supplier
-  (get [_] (factory)))
-
 (defn- build-verticle
-  [{:keys [on-init on-start on-stop on-error]
+  [{:keys [on-start on-stop on-error]
     :or {on-error (constantly nil)
-         on-init (constantly nil)
          on-stop (constantly nil)}}]
   (let [vsm (volatile! nil)
         ctx (volatile! nil)
@@ -69,21 +65,18 @@
     (reify Verticle
       (init [_ instance context]
         (vreset! vsm instance)
-        (vreset! ctx context)
-        (try
-          (vswap! lst merge (on-init context))
-          (catch Throwable e
-            (on-error e))))
+        (vreset! ctx context))
       (getVertx [_] @vsm)
       (^void start [_ ^Future o]
-       (-> (p/do! (on-start @ctx @lst))
+       (-> (p/do! (on-start @ctx))
            (p/handle (fn [state error]
                        (if error
                          (do
                            (.fail o error)
-                           (on-error error))
+                           (on-error @ctx error))
                          (do
-                           (vswap! lst merge state)
+                           (when (map? state)
+                             (vswap! lst merge state))
                            (.complete o)))))))
       (^void stop [_ ^Future o]
        (p/handle (p/do! (on-stop @ctx @lst))
@@ -92,6 +85,16 @@
                      (do (on-error err)
                          (.fail o err))
                      (.complete o))))))))
+
+(defn- build-disposable
+  [vsm id]
+  (reify
+    clojure.lang.IFn
+    (invoke [_] (undeploy! vsm id))
+
+    java.io.Closeable
+    (close [_]
+      @(undeploy! vsm id))))
 
 (defn- opts->deployment-options
   [{:keys [instances worker?]}]
