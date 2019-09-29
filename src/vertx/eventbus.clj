@@ -20,22 +20,23 @@
 (declare opts->delivery-opts)
 (declare resolve-eventbus)
 (declare build-message-codec)
+(declare build-message)
 
 ;; --- Public Api
 
 (defn consumer
   [vsm topic f]
   (let [^EventBus bus (resolve-eventbus vsm)
-        ^MessageConsumer cons (.consumer bus ^String topic)]
-    (.handler cons (reify Handler
-                     (handle [_ msg]
-                       (.pause cons)
-                       (-> (p/do! (f msg))
-                           (p/handle (fn [res err]
-                                       (.resume cons)
-                                       (.reply msg (or res err)
-                                               (opts->delivery-opts {}))))))))
-    cons))
+        ^MessageConsumer consumer (.consumer bus ^String topic)]
+    (.handler consumer (reify Handler
+                         (handle [_ msg]
+                           (.pause consumer)
+                           (-> (p/do! (f (build-message msg)))
+                               (p/handle (fn [res err]
+                                           (.resume consumer)
+                                           (.reply msg (or res err)
+                                                   (opts->delivery-opts {}))))))))
+    consumer))
 
 (defn publish!
   ([vsm topic msg] (publish! vsm topic msg {}))
@@ -70,18 +71,12 @@
                ^Object msg
                ^DeliveryOptions opts
                ^Handler (vu/deferred->handler d))
-     d)))
+     (p/then' d build-message))))
 
 (defn configure!
   [vsm opts]
   (let [^EventBus bus (resolve-eventbus vsm)]
     (.registerCodec bus (build-message-codec))))
-
-;; TODO: add opts
-
-(defn reply!
-  [^Message sender ^Object message]
-  (.reply sender message))
 
 ;; --- Impl
 
@@ -95,12 +90,23 @@
 
 (defn- build-message-codec
   []
+  ;; TODO: implement the wire encode/decode using transit+msgpack
   (reify MessageCodec
     (encodeToWire [_ buffer data])
     (decodeFromWire [_ pos buffer])
     (transform [_ data] data)
     (name [_] "clj:msgpack")
     (^byte systemCodecID [_] (byte -1))))
+
+(defrecord Msg [body])
+
+(defn- build-message
+  [^Message msg]
+  (let [metadata {::reply-to (.replyAddress msg)
+                  ::send? (.isSend msg)
+                  ::address (.address msg)}
+        body (.body msg)]
+    (Msg. body metadata nil)))
 
 (defn- opts->delivery-opts
   [{:keys [codec local?]}]

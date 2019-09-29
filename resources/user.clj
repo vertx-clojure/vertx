@@ -31,11 +31,11 @@
 
 (def echo-verticle
   (letfn [(on-message [message]
-            (println (pr-str "received:" (.body message)
+            (println (pr-str "received:" message
                              "on" (thr-name)))
-            (.body message))
+            (:body message))
           (on-start [ctx]
-            (vxe/consumer ctx "test.topic" on-message))]
+            (vxe/consumer ctx "test.echo" on-message))]
 
     (vx/verticle {:on-start on-start})))
 
@@ -47,11 +47,23 @@
   [_ disposable]
   (.close disposable))
 
-(defmethod ig/init-key :verticle/echo
-  [_ {:keys [system] :as options}]
-  @(vx/deploy! system echo-verticle options))
+;; --- Echo Verticle Actor (using eventbus)
 
-(defmethod ig/halt-key! :verticle/echo
+;; This is the same as the previous echo verticle, it just reduces the
+;; boilerplate of creating the consumer.
+
+(def echo-actor-verticle
+  (letfn [(on-message [message]
+            (println (pr-str "received:" (.body message)
+                             "on" (thr-name)))
+            (.body message))]
+    (vx/actor "test.echo2" {:on-message on-message})))
+
+(defmethod ig/init-key :verticle/echo-actor
+  [_ {:keys [system] :as options}]
+  @(vx/deploy! system echo-actor-verticle options))
+
+(defmethod ig/halt-key! :verticle/echo-actor
   [_ disposable]
   (.close disposable))
 
