@@ -78,6 +78,12 @@
   (let [^EventBus bus (resolve-eventbus vsm)]
     (.registerCodec bus (build-message-codec))))
 
+(defrecord Msg [body])
+
+(defn message?
+  [v]
+  (instance? Msg v))
+
 ;; --- Impl
 
 (defn- resolve-eventbus
@@ -97,8 +103,6 @@
     (transform [_ data] data)
     (name [_] "clj:msgpack")
     (^byte systemCodecID [_] (byte -1))))
-
-(defrecord Msg [body])
 
 (defn- build-message
   [^Message msg]
