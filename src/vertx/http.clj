@@ -7,7 +7,8 @@
 (ns vertx.http
   "Enables `raw` access to the http facilites of vertx. If you want more
   clojure idiomatic api, refer to the `vertx.web` namespace."
-  (:require [promesa.core :as p]
+  (:require [clojure.spec.alpha :as s]
+            [promesa.core :as p]
             [vertx.util :as vu])
   (:import
    io.vertx.core.Vertx
@@ -25,8 +26,18 @@
 
 ;; --- Public Api
 
+(s/def :vertx.http/handler fn?)
+(s/def :vertx.http/host string?)
+(s/def :vertx.http/port pos?)
+(s/def ::server-options
+  (s/keys :req-un [:vertx.http/handler]
+          :opt-un [:vertx.http/host
+                   :vertx.http/port]))
+
 (defn server
+  "Starts a vertx http server."
   [vsm {:keys [handler] :as options}]
+  (s/assert ::server-options options)
   (let [^Vertx vsm (vu/resolve-system vsm)
         ^HttpServerOptions opts (opts->http-server-options options)
         ^HttpServer srv (.createHttpServer vsm opts)
