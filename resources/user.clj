@@ -3,6 +3,7 @@
    [clojure.pprint :refer [pprint]]
    [clojure.tools.namespace.repl :as r]
    [clojure.walk :refer [macroexpand-all]]
+   [clojure.test :as test]
    [integrant.core :as ig]
    [pohjavirta.server :as pohjavirta]
    [promesa.core :as p]
@@ -189,10 +190,24 @@
   (alter-var-root #'state (constantly nil))
   :stoped)
 
-(defn reload
+(defn restart
   []
   (stop)
   (r/refresh :after 'user/start))
+
+(defn- run-test
+  ([] (run-test #"^vertx-tests.*"))
+  ([o]
+   (r/refresh)
+   (cond
+     (instance? java.util.regex.Pattern o)
+     (test/run-all-tests o)
+
+     (symbol? o)
+     (if-let [sns (namespace o)]
+       (do (require (symbol sns))
+           (test/test-vars [(resolve o)]))
+       (test/test-ns o)))))
 
 ;; --- Helpers
 
