@@ -31,7 +31,7 @@
     (.handler consumer (reify Handler
                          (handle [_ msg]
                            (.pause consumer)
-                           (-> (p/do! (f (build-message msg)))
+                           (-> (p/do! (f vsm (build-message msg)))
                                (p/handle (fn [res err]
                                            (.resume consumer)
                                            (.reply msg (or res err)
