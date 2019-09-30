@@ -6,7 +6,8 @@
 
 (ns vertx.web
   "High level api for http servers."
-  (:require [promesa.core :as p]
+  (:require [clojure.spec.alpha :as s]
+            [promesa.core :as p]
             [sieppari.core :as sp]
             [sieppari.async.promesa]
             [reitit.core :as r]
@@ -32,12 +33,23 @@
 (declare -handle-body)
 (declare -run-handler)
 (declare ->RequestContext)
+(declare ->Response)
 
 ;; --- Public Api
 
+(s/def ::wrap-handler
+  (s/or :fn fn?
+        :vec (s/every fn? :kind vector?)))
+
 (defn wrap
+  "Wraps a user defined funcion based handler into a vertx-web aware
+  handler (with support for multipart uploads.
+
+  If the handler is a vector, the sieppari intercerptos engine will be used
+  to resolve the execution of the interceptors + handler."
   ([vsm f] (wrap vsm f nil))
-  ([vsm f opts]
+  ([vsm f options]
+   (s/assert ::wrap-handler f)
    (let [^Vertx vsm (vu/resolve-system vsm)
          ^Router router (Router/router vsm)
          ^Route route (.route router)]
@@ -55,10 +67,17 @@
 (declare router-handler)
 
 (defn wrap-router
+  "Wraps a reitit router instance in a vertx-web aware handler."
   ([vsm router] (wrap-router vsm router nil))
-  ([vsm router opts]
-   (as-> #(router-handler router % opts) handler
-     (wrap vsm handler opts))))
+  ([vsm router options]
+   (s/assert r/router? router)
+   (as-> #(router-handler router % options) handler
+     (wrap vsm handler options))))
+
+(defn rsp
+  "Creates a response record (faster than simple map)."
+  ([status] (->Response status "" nil))
+  ([status body] (->Response status body nil)))
 
 ;; --- Impl
 
@@ -67,6 +86,8 @@
                            ^HttpServerRequest request
                            ^HttpServerRequest response
                            ^RoutingContext context])
+
+(defrecord Response [status body headers])
 
 (defprotocol IAsyncBody
   (-handle-body [_ _]))
@@ -78,10 +99,6 @@
   (-run-handler [_ ctx]))
 
 (extend-protocol IAsyncResponse
-  ;; java.util.concurrent.CompletableFuture
-  ;; (-handle-response [data ctx]
-  ;;   (p/then' data #(-handle-response % ctx)))
-
   clojure.lang.IPersistentMap
   (-handle-response [data ctx]
     (let [status (or (:status data) 200)
@@ -113,10 +130,6 @@
   (if-let [match (::match ctx)]
     {:status 405 :body ""}
     {:status 404 :body ""}))
-
-;; (defn- error-handler
-;;   [ctx]
-;;   {:status 500 :body ""})
 
 (defn- router-handler
   [router {:keys [path method] :as ctx} options]
