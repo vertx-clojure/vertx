@@ -24,6 +24,12 @@
   (reify Supplier
     (get [_] (f))))
 
+(defn fn->handler
+  [f]
+  (reify Handler
+    (handle [_ v]
+      (f v))))
+
 (defn deferred->handler
   [d]
   (reify Handler
