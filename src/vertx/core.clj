@@ -29,13 +29,15 @@
 
 ;; --- Public Api
 
-(s/def :vertx.system/threads pos?)
+(s/def :vertx.core.system/threads pos?)
+(s/def :vertx.core.system/on-error fn?)
 (s/def ::system-options
-  (s/keys :opt-un [:vertx.system/threads]))
+  (s/keys :opt-un [:vertx.core.system/threads
+                   :vertx.core.system/on-error]))
 
 (defn system
   "Creates a new vertx actor system instance."
-  ([] (Vertx/vertx))
+  ([] (system {}))
   ([options]
    (s/assert ::system-options options)
    (let [^VertxOptions opts (opts->vertx-options options)
@@ -43,13 +45,13 @@
      (vxe/configure! vsm opts)
      vsm)))
 
-(s/def :vertx.verticle/on-start fn?)
-(s/def :vertx.verticle/on-stop fn?)
-(s/def :vertx.verticle/on-error fn?)
+(s/def :vertx.core.verticle/on-start fn?)
+(s/def :vertx.core.verticle/on-stop fn?)
+(s/def :vertx.core.verticle/on-error fn?)
 (s/def ::verticle-options
-  (s/keys :req-un [:vertx.verticle/on-start]
-          :opt-un [:vertx.verticle/on-stop
-                   :vertx.verticle/on-error]))
+  (s/keys :req-un [:vertx.core.verticle/on-start]
+          :opt-un [:vertx.core.verticle/on-stop
+                   :vertx.core.verticle/on-error]))
 
 (defn verticle
   "Creates a verticle instance (factory)."
@@ -65,15 +67,12 @@
   [v]
   (instance? IVerticleFactory v))
 
-(s/def :vertx.actor/on-message fn?)
-(s/def :vertx.actor/on-start :vertx.verticle/on-start)
-(s/def :vertx.actor/on-stop  :vertx.verticle/on-stop)
-(s/def :vertx.actor/on-error :vertx.verticle/on-error)
+(s/def :vertx.core.actor/on-message fn?)
 (s/def ::actor-options
-  (s/keys :req-un [:vertx.actor/on-message]
-          :opt-un [:vertx.actor/on-start
-                   :vertx.actor/on-error
-                   :vertx.actor/on-stop]))
+  (s/keys :req-un [:vertx.core.actor/on-message]
+          :opt-un [:vertx.core.verticle/on-start
+                   :vertx.core.verticle/on-error
+                   :vertx.core.verticle/on-stop]))
 
 (defn actor
   "A shortcut for create a verticle instance (factory) that consumes a
@@ -86,13 +85,20 @@
     Supplier
     (get [_] (build-actor topic options))))
 
+(s/def :vertx.core.deploy/instances pos?)
+(s/def :vertx.core.deploy/worker boolean?)
+(s/def ::deploy-options
+  (s/keys :opt-un [:vertx.core.deploy/worker
+                   :vertx.core.deploy/instances]))
+
 (defn deploy!
   "Deploy a verticle."
   ([vsm supplier] (deploy! vsm supplier nil))
-  ([vsm supplier opts]
+  ([vsm supplier options]
    (s/assert verticle? supplier)
+   (s/assert ::deploy-options options)
    (let [d (p/deferred)
-         o (opts->deployment-options opts)]
+         o (opts->deployment-options options)]
      (.deployVerticle ^Vertx vsm
                       ^Supplier supplier
                       ^DeploymentOptions o
@@ -104,6 +110,7 @@
   the easiest way to undeplo is executin the callable returned by
   `deploy!` function."
   [vsm id]
+  (s/assert string? id)
   (let [d (p/deferred)]
     (.undeploy ^Vertx (vu/resolve-system vsm)
                ^String id
@@ -150,6 +157,7 @@
                on-stop (constantly nil)}}]
   (letfn [(-on-start [ctx]
             (let [state (on-start ctx)
+                  state (if (map? state) state {})
                   consumer (vxe/consumer ctx topic on-message)]
               (assoc state ::consumer consumer)))]
     (build-verticle {:on-error on-error
@@ -170,16 +178,17 @@
       @(undeploy! vsm id))))
 
 (defn- opts->deployment-options
-  [{:keys [instances worker?]}]
+  [{:keys [instances worker]}]
   (let [opts (DeploymentOptions.)]
     (when instances (.setInstances opts (int instances)))
-    (when worker? (.setWorker opts worker?))
+    (when worker (.setWorker opts worker))
     opts))
 
 (defn- opts->vertx-options
-  [{:keys [threads]}]
+  [{:keys [threads on-error]}]
   (let [opts (VertxOptions.)]
     (when threads (.setEventLoopPoolSize opts (int threads)))
+    (when on-error (.exceptionHandler (vu/fn->handler on-error)))
     opts))
 
 
