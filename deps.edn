@@ -1,6 +1,6 @@
-{:deps {org.clojure/tools.logging {:mvn/version "0.3.1"}
-        funcool/promesa {:mvn/version "4.0.0-SNAPSHOT"}
-        metosin/reitit-core {:mvn/version "0.3.9"}
+{:deps {org.clojure/tools.logging {:mvn/version "0.5.0"}
+        funcool/promesa {:mvn/version "4.0.2"}
+        metosin/reitit-core {:mvn/version "0.3.10"}
         metosin/sieppari {:mvn/version "0.0.0-alpha7"}
         com.cognitect/transit-clj {:mvn/version "0.8.319"}
         io.vertx/vertx-core {:mvn/version "3.8.1"}
@@ -13,7 +13,7 @@
                 io.netty/netty-transport-native-epoll {:mvn/version "4.1.39.Final"}
                 environ/environ {:mvn/version "1.1.0"}
                 integrant/integrant {:mvn/version "0.7.0"}
-                metosin/pohjavirta {:mvn/version "0.0.1-alpha4"}
+                metosin/pohjavirta {:mvn/version "0.0.1-alpha5"}
                 org.clojure/tools.namespace {:mvn/version "0.3.1"}
                 badigeon/badigeon {:git/url "https://github.com/EwenG/badigeon.git"
                                    :sha "db25a8f7053dec65afeb7fb0d1a5351dcdbe78bd"
