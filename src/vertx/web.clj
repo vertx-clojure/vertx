@@ -155,11 +155,8 @@
 
 (def cookies-interceptor
   (letfn [(parse-cookie [^Cookie item]
-            (prn (.encode item))
             [(.getName item)
-             {:domain (.getDomain item)
-              :path (.getPath item)
-              :value (.getValue item)}])
+             {:value (.getValue item)}])
           (encode-cookie [name data]
             (cond-> (Cookie/cookie ^String name ^String (:value data))
               (:http-only data) (.setHttpOnly true)

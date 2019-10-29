@@ -124,6 +124,7 @@
   (letfn [(handler [ctx]
             (let [params (:path-params ctx)]
               {:status 200
+               :cookies {"foo-baz" {:value "test" :path "/foo"}}
                :body (str "hello " (:name params) "\n")}))
 
           (on-error [ctx err]
