@@ -18,6 +18,7 @@
    io.vertx.core.Vertx
    io.vertx.core.Handler
    io.vertx.core.Future
+   io.vertx.core.http.Cookie
    io.vertx.core.http.HttpServer
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse
@@ -50,9 +51,12 @@
   ([vsm f] (wrap vsm f nil))
   ([vsm f options]
    (s/assert ::wrap-handler f)
+   ;; TODO: add error handling
    (let [^Vertx vsm (vu/resolve-system vsm)
          ^Router router (Router/router vsm)
          ^Route route (.route router)]
+
+
      (.handler route (BodyHandler/create true))
      (.handler route (reify Handler
                        (handle [_ context]
@@ -61,7 +65,10 @@
                                method (-> request .rawMethod .toLowerCase keyword)
                                path (.path request)
                                ctx (->RequestContext method path request response context)]
-                           (p/then' (-run-handler f ctx) #(-handle-response % ctx))))))
+                           (-> (-run-handler f ctx)
+                               (p/then' #(-handle-response % ctx))
+                               (p/catch (fn [err]
+                                          (.fail context err))))))))
      router)))
 
 (declare router-handler)
@@ -71,7 +78,7 @@
   ([vsm router] (wrap-router vsm router nil))
   ([vsm router options]
    (s/assert r/router? router)
-   (as-> #(router-handler router % options) handler
+   (let [handler #(router-handler router % options)]
      (wrap vsm handler options))))
 
 (defn rsp
@@ -102,6 +109,7 @@
   clojure.lang.IPersistentMap
   (-handle-response [data ctx]
     (let [status (or (:status data) 200)
+          cookies (:cookies data)
           body (or (:body data) "")
           res (:response ctx)]
       (.setStatusCode ^HttpServerResponse res status)
@@ -142,3 +150,34 @@
         (empty? interceptors) (handler ctx)
         :else (-run-handler (conj interceptors handler) ctx)))
     (default-handler ctx)))
+
+;; --- Cookies Interceptor
+
+(def cookies-interceptor
+  (letfn [(parse-cookie [^Cookie item]
+            (prn (.encode item))
+            [(.getName item)
+             {:domain (.getDomain item)
+              :path (.getPath item)
+              :value (.getValue item)}])
+          (encode-cookie [name data]
+            (cond-> (Cookie/cookie ^String name ^String (:value data))
+              (:http-only data) (.setHttpOnly true)
+              (:domain data) (.setDomain (:domain data))
+              (:path data) (.setPath (:path data))
+              (:secure data) (.setSecure true)))
+          (add-cookie [^HttpServerResponse res [name data]]
+            (.addCookie res (encode-cookie name data)))
+          (enter [data]
+            (let [^HttpServerRequest req (get-in data [:request :request])
+                  cookies (into {} (map parse-cookie) (vals (.cookieMap req)))]
+              (update data :request assoc :cookies cookies)))
+          (leave [data]
+            (let [cookies (get-in data [:response :cookies])
+                  res (get-in data [:request :response])]
+              (when (map? cookies)
+                (run! (partial add-cookie res) cookies))
+              data))]
+    {:enter enter
+     :leave leave}))
+

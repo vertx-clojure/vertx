@@ -29,11 +29,11 @@
 
 ;; --- Public Api
 
-(s/def :vertx.core.system/threads pos?)
-(s/def :vertx.core.system/on-error fn?)
+(s/def :vertx.core$system/threads pos?)
+(s/def :vertx.core$system/on-error fn?)
 (s/def ::system-options
-  (s/keys :opt-un [:vertx.core.system/threads
-                   :vertx.core.system/on-error]))
+  (s/keys :opt-un [:vertx.core$system/threads
+                   :vertx.core$system/on-error]))
 
 (defn system
   "Creates a new vertx actor system instance."
@@ -45,13 +45,13 @@
      (vxe/configure! vsm opts)
      vsm)))
 
-(s/def :vertx.core.verticle/on-start fn?)
-(s/def :vertx.core.verticle/on-stop fn?)
-(s/def :vertx.core.verticle/on-error fn?)
+(s/def :vertx.core$verticle/on-start fn?)
+(s/def :vertx.core$verticle/on-stop fn?)
+(s/def :vertx.core$verticle/on-error fn?)
 (s/def ::verticle-options
-  (s/keys :req-un [:vertx.core.verticle/on-start]
-          :opt-un [:vertx.core.verticle/on-stop
-                   :vertx.core.verticle/on-error]))
+  (s/keys :req-un [:vertx.core$verticle/on-start]
+          :opt-un [:vertx.core$verticle/on-stop
+                   :vertx.core$verticle/on-error]))
 
 (defn verticle
   "Creates a verticle instance (factory)."
@@ -67,12 +67,12 @@
   [v]
   (instance? IVerticleFactory v))
 
-(s/def :vertx.core.actor/on-message fn?)
+(s/def :vertx.core$actor/on-message fn?)
 (s/def ::actor-options
-  (s/keys :req-un [:vertx.core.actor/on-message]
-          :opt-un [:vertx.core.verticle/on-start
-                   :vertx.core.verticle/on-error
-                   :vertx.core.verticle/on-stop]))
+  (s/keys :req-un [:vertx.core$actor/on-message]
+          :opt-un [:vertx.core$verticle/on-start
+                   :vertx.core$verticle/on-error
+                   :vertx.core$verticle/on-stop]))
 
 (defn actor
   "A shortcut for create a verticle instance (factory) that consumes a
@@ -85,11 +85,11 @@
     Supplier
     (get [_] (build-actor topic options))))
 
-(s/def :vertx.core.deploy/instances pos?)
-(s/def :vertx.core.deploy/worker boolean?)
+(s/def :vertx.core$deploy/instances pos?)
+(s/def :vertx.core$deploy/worker boolean?)
 (s/def ::deploy-options
-  (s/keys :opt-un [:vertx.core.deploy/worker
-                   :vertx.core.deploy/instances]))
+  (s/keys :opt-un [:vertx.core$deploy/worker
+                   :vertx.core$deploy/instances]))
 
 (defn deploy!
   "Deploy a verticle."

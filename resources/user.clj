@@ -115,10 +115,10 @@
 (def sample-interceptor
   {:enter (fn [data]
             ;; (prn "sample-interceptor:enter")
-            (p/deferred data))
+            (p/promise data))
    :leave (fn [data]
             ;; (prn "sample-interceptor:leave")
-            (p/deferred data))})
+            (p/promise data))})
 
 (def web-router-verticle
   (letfn [(handler [ctx]
@@ -130,7 +130,8 @@
             (prn "err" err))
 
           (on-start [ctx]
-            (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor]
+            (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor
+                                                            vxw/cookies-interceptor]
                                              :get handler}]]
                   router (rt/router routes)
                   handler (vxw/wrap-router ctx router)]
