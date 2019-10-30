@@ -148,7 +148,7 @@
           (leave [data]
             (let [headers (get-headers (:request data))]
               (if (::preflight data)
-                (assoc data :response {:status 200 :headers headers})
+                (assoc data :response {:status 204 :headers headers})
                 (update-in data [:response :headers] merge headers))))]
 
     {:enter enter
