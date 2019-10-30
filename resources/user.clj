@@ -116,10 +116,10 @@
 
 (def sample-interceptor
   {:enter (fn [data]
-            (prn "sample-interceptor:enter")
+            ;; (prn "sample-interceptor:enter")
             (p/promise data))
    :leave (fn [data]
-            (prn "sample-interceptor:leave")
+            ;; (prn "sample-interceptor:leave")
             (p/promise data))})
 
 (def web-router-verticle
@@ -134,12 +134,15 @@
 
           (on-start [ctx]
             (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor
-                                                            cookies-interceptor
-                                                            (cors-interceptor {:origin "*"
-                                                                               :allow-credentials true
-                                                                               :allow-methods #{:post :get :patch :head :options :put}})]
+                                                            cookies-interceptor]
                                              :get handler}]]
-                  router (rt/router routes)
+                  cors (cors-interceptor {:origin "*"
+                                          :allow-credentials true
+                                          :allow-methods #{:post :get :patch :head :options :put}})
+
+                  router (rt/router routes {:data {:interceptors [sample-interceptor
+                                                                  cookies-interceptor
+                                                                  cors]}})
                   handler (vxw/wrap-router ctx router)]
               (vxh/server ctx {:handler handler :port 2021})))]
 

@@ -51,9 +51,23 @@
     {:enter enter
      :leave leave}))
 
+(s/def ::origin string?)
+(s/def ::allow-credentials boolean?)
+(s/def ::allow-methods (s/every keyword? :kind set?))
+(s/def ::allow-headers (s/every keyword? :kind set?))
+(s/def ::expose-headers (s/every keyword? :kind set?))
+(s/def ::max-age number?)
+
+(s/def ::cors-opts
+  (s/keys :req-un [::origin]
+          :opt-un [::allow-headers
+                   ::allow-methods
+                   ::expose-headers
+                   ::max-age]))
+
 (defn cors-interceptor
   [opts]
-  ;; TODO: validate opts
+  (s/assert ::cors-opts opts)
   (letfn [(preflight? [{:keys [method headers] :as ctx}]
             (and (= method :options)
                  (contains? headers "origin")
@@ -99,7 +113,6 @@
 
           (enter [data]
             (let [ctx (:request data)]
-              (prn "cors:enter" "preflight?" (preflight? ctx))
               (if (preflight? ctx)
                 (spx/terminate (assoc data ::preflight true))
                 data)))
