@@ -15,6 +15,9 @@
             [vertx.util :as vu])
   (:import
    clojure.lang.Keyword
+   clojure.lang.IPersistentMap
+   clojure.lang.MapEntry
+   java.util.Map$Entry
    io.vertx.core.Vertx
    io.vertx.core.Handler
    io.vertx.core.Future
@@ -32,7 +35,6 @@
 
 (declare -handle-response)
 (declare -handle-body)
-(declare -run-handler)
 (declare ->RequestContext)
 (declare ->Response)
 
@@ -41,6 +43,19 @@
 (s/def ::wrap-handler
   (s/or :fn fn?
         :vec (s/every fn? :kind vector?)))
+
+(def lowercase-keys-t
+  (map (fn [^Map$Entry entry]
+         (MapEntry. (.toLowerCase (.getKey entry)) (.getValue entry)))))
+
+(defn- make-ctx
+  [^RoutingContext context]
+  (let [^HttpServerRequest request (.request ^RoutingContext context)
+        ^HttpServerResponse response (.response ^RoutingContext context)
+        method (-> request .rawMethod .toLowerCase keyword)
+        headers (into {} lowercase-keys-t (-> request .headers))
+        path (.path request)]
+    (->RequestContext method headers path request response context)))
 
 (defn wrap
   "Wraps a user defined funcion based handler into a vertx-web aware
@@ -56,22 +71,36 @@
          ^Router router (Router/router vsm)
          ^Route route (.route router)]
 
-
      (.handler route (BodyHandler/create true))
      (.handler route (reify Handler
                        (handle [_ context]
-                         (let [^HttpServerRequest request (.request ^RoutingContext context)
-                               ^HttpServerResponse response (.response ^RoutingContext context)
-                               method (-> request .rawMethod .toLowerCase keyword)
-                               path (.path request)
-                               ctx (->RequestContext method path request response context)]
-                           (-> (-run-handler f ctx)
+                         (let [ctx (make-ctx context)]
+                           (-> (p/do! (f ctx))
                                (p/then' #(-handle-response % ctx))
-                               (p/catch (fn [err]
-                                          (.fail context err))))))))
+                               (p/catch #(do (prn %) (.fail (:context ctx) %))))))))
      router)))
 
-(declare router-handler)
+(defn- default-handler
+  [ctx]
+  (if (::match ctx)
+    {:status 405}
+    {:status 404}))
+
+(defn- run-chain
+  [ctx chain handler]
+  (let [d (p/deferred)]
+    (sp/execute (conj chain handler) ctx #(p/resolve! d %) #(p/reject! d %))
+    d))
+
+(defn- router-handler
+  [router {:keys [path method] :as ctx} options]
+  (let [{:keys [data path-params] :as match} (r/match-by-path router path)
+        handler-fn (get data method default-handler)
+        interceptors (get data :interceptors)
+        ctx (assoc ctx ::match match :path-params path-params)]
+    (if (empty? interceptors)
+      (handler-fn ctx)
+      (run-chain ctx interceptors handler-fn))))
 
 (defn wrap-router
   "Wraps a reitit router instance in a vertx-web aware handler."
@@ -89,6 +118,7 @@
 ;; --- Impl
 
 (defrecord RequestContext [^Keyword method
+                           ^IPersistentMap headers
                            ^String path
                            ^HttpServerRequest request
                            ^HttpServerRequest response
@@ -96,85 +126,36 @@
 
 (defrecord Response [status body headers])
 
-(defprotocol IAsyncBody
-  (-handle-body [_ _]))
-
 (defprotocol IAsyncResponse
   (-handle-response [_ _]))
-
-(defprotocol IRunHandler
-  (-run-handler [_ ctx]))
 
 (extend-protocol IAsyncResponse
   clojure.lang.IPersistentMap
   (-handle-response [data ctx]
     (let [status (or (:status data) 200)
+          headers (:headers data)
           cookies (:cookies data)
-          body (or (:body data) "")
+          body (:body data)
           res (:response ctx)]
       (.setStatusCode ^HttpServerResponse res status)
+      (run! (fn [[name value]]
+              (.putHeader ^HttpServerResponse res
+                          ^String name
+                          ^String value))
+            headers)
       (-handle-body body res))))
 
+(defprotocol IAsyncBody
+  (-handle-body [_ _]))
+
 (extend-protocol IAsyncBody
+  nil
+  (-handle-body [data res]
+    (.putHeader ^HttpServerResponse res "content-length" "0")
+    (.end ^HttpServerResponse res))
+
   String
   (-handle-body [data res]
-    (.end ^HttpServerResponse res data)))
-
-(extend-protocol IRunHandler
-  clojure.lang.Fn
-  (-run-handler [f ctx]
-    (f ctx))
-
-  clojure.lang.IPersistentVector
-  (-run-handler [v ctx]
-    (let [d (p/deferred)]
-      (sp/execute v ctx #(p/resolve! d %) #(p/reject! d %))
-      d)))
-
-(def noop (constantly nil))
-
-(defn- default-handler
-  [ctx]
-  (if-let [match (::match ctx)]
-    {:status 405 :body ""}
-    {:status 404 :body ""}))
-
-(defn- router-handler
-  [router {:keys [path method] :as ctx} options]
-  (if-let [{:keys [data path-params] :as match} (r/match-by-path router path)]
-    (let [handler (get data method)
-          interceptors (get data :interceptors)
-          ctx (assoc ctx ::match match :path-params path-params)]
-      (cond
-        (nil? handler) (default-handler ctx)
-        (empty? interceptors) (handler ctx)
-        :else (-run-handler (conj interceptors handler) ctx)))
-    (default-handler ctx)))
-
-;; --- Cookies Interceptor
-
-(def cookies-interceptor
-  (letfn [(parse-cookie [^Cookie item]
-            [(.getName item)
-             {:value (.getValue item)}])
-          (encode-cookie [name data]
-            (cond-> (Cookie/cookie ^String name ^String (:value data))
-              (:http-only data) (.setHttpOnly true)
-              (:domain data) (.setDomain (:domain data))
-              (:path data) (.setPath (:path data))
-              (:secure data) (.setSecure true)))
-          (add-cookie [^HttpServerResponse res [name data]]
-            (.addCookie res (encode-cookie name data)))
-          (enter [data]
-            (let [^HttpServerRequest req (get-in data [:request :request])
-                  cookies (into {} (map parse-cookie) (vals (.cookieMap req)))]
-              (update data :request assoc :cookies cookies)))
-          (leave [data]
-            (let [cookies (get-in data [:response :cookies])
-                  res (get-in data [:request :response])]
-              (when (map? cookies)
-                (run! (partial add-cookie res) cookies))
-              data))]
-    {:enter enter
-     :leave leave}))
-
+    (let [length (count data)]
+      (.putHeader ^HttpServerResponse res "content-length" (str length))
+      (.end ^HttpServerResponse res data))))

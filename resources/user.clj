@@ -8,10 +8,12 @@
    [pohjavirta.server :as pohjavirta]
    [promesa.core :as p]
    [reitit.core :as rt]
+   [sieppari.context :as spx]
    [vertx.core :as vx]
    [vertx.eventbus :as vxe]
    [vertx.http :as vxh]
-   [vertx.web :as vxw])
+   [vertx.web :as vxw]
+   [vertx.web.interceptors :refer [cookies-interceptor cors-interceptor]])
   (:import
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse))
@@ -114,10 +116,10 @@
 
 (def sample-interceptor
   {:enter (fn [data]
-            ;; (prn "sample-interceptor:enter")
+            (prn "sample-interceptor:enter")
             (p/promise data))
    :leave (fn [data]
-            ;; (prn "sample-interceptor:leave")
+            (prn "sample-interceptor:leave")
             (p/promise data))})
 
 (def web-router-verticle
@@ -132,7 +134,10 @@
 
           (on-start [ctx]
             (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor
-                                                            vxw/cookies-interceptor]
+                                                            cookies-interceptor
+                                                            (cors-interceptor {:origin "*"
+                                                                               :allow-credentials true
+                                                                               :allow-methods #{:post :get :patch :head :options :put}})]
                                              :get handler}]]
                   router (rt/router routes)
                   handler (vxw/wrap-router ctx router)]
