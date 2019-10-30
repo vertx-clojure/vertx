@@ -16,8 +16,6 @@
   (:import
    clojure.lang.Keyword
    clojure.lang.IPersistentMap
-   clojure.lang.MapEntry
-   java.util.Map$Entry
    io.vertx.core.Vertx
    io.vertx.core.Handler
    io.vertx.core.Future
@@ -44,18 +42,13 @@
   (s/or :fn fn?
         :vec (s/every fn? :kind vector?)))
 
-(def lowercase-keys-t
-  (map (fn [^Map$Entry entry]
-         (MapEntry. (.toLowerCase (.getKey entry)) (.getValue entry)))))
-
 (defn- make-ctx
   [^RoutingContext context]
   (let [^HttpServerRequest request (.request ^RoutingContext context)
         ^HttpServerResponse response (.response ^RoutingContext context)
         method (-> request .rawMethod .toLowerCase keyword)
-        headers (into {} lowercase-keys-t (-> request .headers))
         path (.path request)]
-    (->RequestContext method headers path request response context)))
+    (->RequestContext method nil path request response context)))
 
 (defn wrap
   "Wraps a user defined funcion based handler into a vertx-web aware
@@ -133,16 +126,9 @@
   clojure.lang.IPersistentMap
   (-handle-response [data ctx]
     (let [status (or (:status data) 200)
-          headers (:headers data)
-          cookies (:cookies data)
           body (:body data)
           res (:response ctx)]
       (.setStatusCode ^HttpServerResponse res status)
-      (run! (fn [[name value]]
-              (.putHeader ^HttpServerResponse res
-                          ^String name
-                          ^String value))
-            headers)
       (-handle-body body res))))
 
 (defprotocol IAsyncBody

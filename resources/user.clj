@@ -131,6 +131,7 @@
                              :allow-methods #{:post :get :patch :head :options :put}}
 
                   router (rt/router routes {:data {:interceptors [(vxi/cookies)
+                                                                  (vxi/headers)
                                                                   (vxi/cors cors-opts)]}})
                   handler (vxw/wrap-router ctx router)]
               (vxh/server ctx {:handler handler :port 2021})))]

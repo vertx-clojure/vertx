@@ -18,6 +18,8 @@
    [vertx.util :as vu])
   (:import
    clojure.lang.Keyword
+   clojure.lang.MapEntry
+   java.util.Map$Entry
    io.vertx.core.Vertx
    io.vertx.core.Handler
    io.vertx.core.Future
@@ -48,6 +50,31 @@
                   res (get-in data [:request :response])]
               (when (map? cookies)
                 (run! (partial add-cookie res) cookies))
+              data))]
+    {:enter enter
+     :leave leave}))
+
+(def lowercase-keys-t
+  (map (fn [^Map$Entry entry]
+         (MapEntry. (.toLowerCase (.getKey entry)) (.getValue entry)))))
+
+(defn headers
+  []
+  (letfn [(parse [ctx]
+            (let [^HttpServerRequest request (:request ctx)]
+              (into {} lowercase-keys-t (.headers request))))
+
+          (enter [data]
+            (update data :request assoc :headers (parse (:request data))))
+
+          (leave [data]
+            (let [^HttpServerResponse res (get-in data [:request :response])
+                  headers (get-in data [:response :headers])]
+              (run! (fn [[key value]]
+                      (.putHeader ^HttpServerResponse res
+                                  ^String (name key)
+                                  ^String value))
+                    headers)
               data))]
     {:enter enter
      :leave leave}))
