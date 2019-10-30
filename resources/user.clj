@@ -13,7 +13,7 @@
    [vertx.eventbus :as vxe]
    [vertx.http :as vxh]
    [vertx.web :as vxw]
-   [vertx.web.interceptors :refer [cookies-interceptor cors-interceptor]])
+   [vertx.web.interceptors :as vxi])
   (:import
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse))
@@ -114,14 +114,6 @@
 
 ;; --- Web Router Verticle
 
-(def sample-interceptor
-  {:enter (fn [data]
-            ;; (prn "sample-interceptor:enter")
-            (p/promise data))
-   :leave (fn [data]
-            ;; (prn "sample-interceptor:leave")
-            (p/promise data))})
-
 (def web-router-verticle
   (letfn [(handler [ctx]
             (let [params (:path-params ctx)]
@@ -133,16 +125,13 @@
             (prn "err" err))
 
           (on-start [ctx]
-            (let [routes [["/foo/bar/:name" {:interceptors [sample-interceptor
-                                                            cookies-interceptor]
-                                             :get handler}]]
-                  cors (cors-interceptor {:origin "*"
-                                          :allow-credentials true
-                                          :allow-methods #{:post :get :patch :head :options :put}})
+            (let [routes [["/foo/bar/:name" {:get handler}]]
+                  cors-opts {:origin "*"
+                             :allow-credentials true
+                             :allow-methods #{:post :get :patch :head :options :put}}
 
-                  router (rt/router routes {:data {:interceptors [sample-interceptor
-                                                                  cookies-interceptor
-                                                                  cors]}})
+                  router (rt/router routes {:data {:interceptors [(vxi/cookies)
+                                                                  (vxi/cors cors-opts)]}})
                   handler (vxw/wrap-router ctx router)]
               (vxh/server ctx {:handler handler :port 2021})))]
 

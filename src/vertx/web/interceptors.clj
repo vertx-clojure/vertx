@@ -26,7 +26,8 @@
    io.vertx.core.http.HttpServerResponse
    io.vertx.ext.web.RoutingContext))
 
-(def cookies-interceptor
+(defn cookies
+  []
   (letfn [(parse-cookie [^Cookie item]
             [(.getName item)
              {:value (.getValue item)}])
@@ -65,7 +66,7 @@
                    ::expose-headers
                    ::max-age]))
 
-(defn cors-interceptor
+(defn cors
   [opts]
   (s/assert ::cors-opts opts)
   (letfn [(preflight? [{:keys [method headers] :as ctx}]
