@@ -1,14 +1,13 @@
 (ns user
   (:require
    [clojure.pprint :refer [pprint]]
+   [clojure.test :as test]
    [clojure.tools.namespace.repl :as r]
    [clojure.walk :refer [macroexpand-all]]
-   [clojure.test :as test]
    [integrant.core :as ig]
    [pohjavirta.server :as pohjavirta]
    [promesa.core :as p]
    [reitit.core :as rt]
-   [sieppari.context :as spx]
    [vertx.core :as vx]
    [vertx.eventbus :as vxe]
    [vertx.http :as vxh]

@@ -10,12 +10,10 @@
    [clojure.spec.alpha :as s]
    [clojure.string :as str]
    [promesa.core :as p]
-   [sieppari.core :as sp]
-   [sieppari.context :as spx]
-   [sieppari.async.promesa]
    [reitit.core :as r]
-   [vertx.http :as vxh]
-   [vertx.util :as vu])
+   [sieppari.async.promesa]
+   [sieppari.context :as spx]
+   [sieppari.core :as sp])
   (:import
    clojure.lang.Keyword
    clojure.lang.MapEntry
