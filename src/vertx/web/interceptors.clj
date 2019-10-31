@@ -114,7 +114,7 @@
           (get-headers [{:keys [headers] :as ctx}]
             (when-let [origin (allow-origin? headers)]
               (cond-> {"access-control-allow-origin" origin
-                       "access-control-allow-methods" "GET, OPTIONS"}
+                       "access-control-allow-methods" "GET, OPTIONS, HEAD"}
 
                 (:allow-methods opts)
                 (assoc "access-control-allow-methods"
