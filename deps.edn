@@ -1,7 +1,7 @@
 {:deps {org.clojure/tools.logging {:mvn/version "0.5.0"}
-        funcool/promesa {:mvn/version "4.0.2"}
+        funcool/promesa {:mvn/version "5.0.0-SNAPSHOT"}
         metosin/reitit-core {:mvn/version "0.3.10"}
-        metosin/sieppari {:mvn/version "0.0.0-alpha7"}
+        metosin/sieppari {:mvn/version "0.0.0-alpha8"}
         com.cognitect/transit-clj {:mvn/version "0.8.319"}
         io.vertx/vertx-core {:mvn/version "3.8.1"}
         io.vertx/vertx-web {:mvn/version "3.8.1"}}

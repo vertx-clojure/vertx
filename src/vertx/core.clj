@@ -9,13 +9,15 @@
             [promesa.core :as p]
             [vertx.eventbus :as vxe]
             [vertx.util :as vu])
-  (:import io.vertx.core.Vertx
-           io.vertx.core.VertxOptions
-           io.vertx.core.Verticle
-           io.vertx.core.Handler
-           io.vertx.core.Future
-           io.vertx.core.DeploymentOptions
-           java.util.function.Supplier))
+  (:import
+   io.vertx.core.Context
+   io.vertx.core.DeploymentOptions
+   io.vertx.core.Future
+   io.vertx.core.Handler
+   io.vertx.core.Verticle
+   io.vertx.core.Vertx
+   io.vertx.core.VertxOptions
+   java.util.function.Supplier))
 
 (declare opts->deployment-options)
 (declare opts->vertx-options)
@@ -44,6 +46,52 @@
          ^Vertx vsm (Vertx/vertx opts)]
      (vxe/configure! vsm opts)
      vsm)))
+
+(defn get-or-create-context
+  [vsm]
+  (.getOrCreateContext ^Vertx (vu/resolve-system vsm)))
+
+(defn current-context
+  []
+  (Vertx/currentContext))
+
+;; (defn blocking
+;;   ([prm] (blocking prm (current-context)))
+;;   ([prm ctx]
+;;    (assert (instance? Context ctx) "the first argument should be instance of Context")
+;;    (let [d (p/deferred)
+;;          bh (reify Handler
+;;               (handle [this po]
+;;                 (p/finally prm (fn [v e]
+;;                                  (if e
+;;                                    (.fail po e)
+;;                                    (.complete po v))))))
+;;          rh (reify Handler
+;;               (handle [this ar]
+;;                 (if (.succeeded ar)
+;;                   (p/resolve! d (.result ar))
+;;                   (p/reject! d (.cause ar)))))]
+
+;;      (.executeBlocking ^Context ctx
+;;                        ^Handler bh
+;;                        ^Handler rh)
+;;      d)))
+
+(defn handle-on-context
+  "Attaches the context (current if not explicitly provided) to the
+  promise execution chain."
+  ([prm] (handle-on-context prm (current-context)))
+  ([prm ctx]
+   (let [d (p/deferred)]
+     (p/finally prm (fn [v e]
+                      (.runOnContext
+                       ^Context ctx
+                       ^Handler (reify Handler
+                                  (handle [_ v]
+                                    (if e
+                                      (p/reject! d e)
+                                      (p/resolve! d v)))))))
+     d)))
 
 (s/def :vertx.core$verticle/on-start fn?)
 (s/def :vertx.core$verticle/on-stop fn?)

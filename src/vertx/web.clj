@@ -9,8 +9,7 @@
   (:require [clojure.spec.alpha :as s]
             [promesa.core :as p]
             [sieppari.core :as sp]
-            [sieppari.async.promesa]
-            [reitit.core :as r]
+            [reitit.core :as rt]
             [vertx.http :as vxh]
             [vertx.util :as vu])
   (:import
@@ -19,6 +18,7 @@
    io.vertx.core.Vertx
    io.vertx.core.Handler
    io.vertx.core.Future
+   io.vertx.core.buffer.Buffer
    io.vertx.core.http.Cookie
    io.vertx.core.http.HttpServer
    io.vertx.core.http.HttpServerRequest
@@ -27,14 +27,15 @@
    io.vertx.ext.web.Route
    io.vertx.ext.web.Router
    io.vertx.ext.web.RoutingContext
-   io.vertx.ext.web.handler.BodyHandler))
+   io.vertx.ext.web.handler.BodyHandler
+   io.vertx.ext.web.handler.StaticHandler
+   io.vertx.ext.web.handler.ResponseTimeHandler
+   io.vertx.ext.web.handler.LoggerHandler))
 
 ;; --- Constants & Declarations
 
 (declare -handle-response)
 (declare -handle-body)
-(declare ->RequestContext)
-(declare ->Response)
 
 ;; --- Public Api
 
@@ -43,35 +44,39 @@
         :vec (s/every fn? :kind vector?)))
 
 (defn- make-ctx
-  [^RoutingContext context]
-  (let [^HttpServerRequest request (.request ^RoutingContext context)
-        ^HttpServerResponse response (.response ^RoutingContext context)
-        method (-> request .rawMethod .toLowerCase keyword)
-        path (.path request)]
-    (->RequestContext method nil path request response context)))
+  [^RoutingContext routing-context]
+  (let [^HttpServerRequest request (.request ^RoutingContext routing-context)
+        ^HttpServerResponse response (.response ^RoutingContext routing-context)
+        ^Vertx system (.vertx routing-context)]
+    {:body (.getBody routing-context)
+     :path (.path request)
+     :method (-> request .rawMethod .toLowerCase keyword)
+     ::request request
+     ::response response
+     ::execution-context (.getContext system)
+     ::routing-context routing-context}))
 
-(defn wrap
+(defn handler
   "Wraps a user defined funcion based handler into a vertx-web aware
   handler (with support for multipart uploads.
 
   If the handler is a vector, the sieppari intercerptos engine will be used
   to resolve the execution of the interceptors + handler."
-  ([vsm f] (wrap vsm f nil))
-  ([vsm f options]
-   (s/assert ::wrap-handler f)
-   ;; TODO: add error handling
-   (let [^Vertx vsm (vu/resolve-system vsm)
-         ^Router router (Router/router vsm)
-         ^Route route (.route router)]
+  [vsm & handlers]
+  (let [^Vertx vsm (vu/resolve-system vsm)
+        ^Router router (Router/router vsm)]
+    (reduce #(%2 %1) router handlers)))
 
-     (.handler route (BodyHandler/create true))
-     (.handler route (reify Handler
-                       (handle [_ context]
-                         (let [ctx (make-ctx context)]
-                           (-> (p/do! (f ctx))
-                               (p/then' #(-handle-response % ctx))
-                               (p/catch #(do (prn %) (.fail (:context ctx) %))))))))
-     router)))
+(defn assets
+  ([path] (assets path {}))
+  ([path {:keys [root] :or {root "public"} :as options}]
+   (fn [^Router router]
+     (let [^Route route (.route router path)
+           ^Handler handler (doto (StaticHandler/create)
+                              (.setWebRoot root)
+                              (.setDirectoryListing true))]
+       (.handler route handler)
+       router))))
 
 (defn- default-handler
   [ctx]
@@ -86,8 +91,8 @@
     d))
 
 (defn- router-handler
-  [router {:keys [path method] :as ctx} options]
-  (let [{:keys [data path-params] :as match} (r/match-by-path router path)
+  [router {:keys [path method] :as ctx}]
+  (let [{:keys [data path-params] :as match} (rt/match-by-path router path)
         handler-fn (get data method default-handler)
         interceptors (get data :interceptors)
         ctx (assoc ctx ::match match :path-params path-params)]
@@ -95,29 +100,36 @@
       (handler-fn ctx)
       (run-chain ctx interceptors handler-fn))))
 
-(defn wrap-router
-  "Wraps a reitit router instance in a vertx-web aware handler."
-  ([vsm router] (wrap-router vsm router nil))
-  ([vsm router options]
-   (s/assert r/router? router)
-   (let [handler #(router-handler router % options)]
-     (wrap vsm handler options))))
+(defn router
+  ([routes] (router routes {}))
+  ([routes {:keys [delete-uploads?
+                   upload-dir
+                   log-requests?
+                   time-response?]
+            :or {delete-uploads? true
+                 upload-dir "/tmp/vertx.uploads"
+                 log-requests? false
+                 time-response? true}
+            :as options}]
+   (let [rtr (rt/router routes options)
+         hdr #(router-handler rtr %)]
+     (fn [^Router router]
+       (let [^Route route (.route router)]
+         (when time-response? (.handler route (ResponseTimeHandler/create)))
+         (when log-requests? (.handler route (LoggerHandler/create)))
 
-(defn rsp
-  "Creates a response record (faster than simple map)."
-  ([status] (->Response status "" nil))
-  ([status body] (->Response status body nil)))
+         (.handler route (doto (BodyHandler/create true)
+                           (.setDeleteUploadedFilesOnEnd delete-uploads?)
+                           (.setUploadsDirectory upload-dir)))
+         (.handler route (reify Handler
+                           (handle [_ context]
+                             (let [ctx (make-ctx context)]
+                               (-> (p/do! (hdr ctx))
+                                   (p/then' #(-handle-response % ctx))
+                                   (p/catch #(do (prn %) (.fail (:context ctx) %)))))))))
+       router))))
 
 ;; --- Impl
-
-(defrecord RequestContext [^Keyword method
-                           ^IPersistentMap headers
-                           ^String path
-                           ^HttpServerRequest request
-                           ^HttpServerRequest response
-                           ^RoutingContext context])
-
-(defrecord Response [status body headers])
 
 (defprotocol IAsyncResponse
   (-handle-response [_ _]))
@@ -127,7 +139,7 @@
   (-handle-response [data ctx]
     (let [status (or (:status data) 200)
           body (:body data)
-          res (:response ctx)]
+          res (::response ctx)]
       (.setStatusCode ^HttpServerResponse res status)
       (-handle-body body res))))
 
@@ -135,6 +147,14 @@
   (-handle-body [_ _]))
 
 (extend-protocol IAsyncBody
+  (Class/forName "[B")
+  (-handle-body [data res]
+    (.end ^HttpServerResponse res (Buffer/buffer data)))
+
+  Buffer
+  (-handle-body [data res]
+    (.end ^HttpServerResponse res ^Buffer data))
+
   nil
   (-handle-body [data res]
     (.putHeader ^HttpServerResponse res "content-length" "0")

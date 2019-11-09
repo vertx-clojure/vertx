@@ -11,12 +11,13 @@
    [clojure.string :as str]
    [promesa.core :as p]
    [reitit.core :as r]
-   [sieppari.async.promesa]
+   [vertx.web :as vw]
    [sieppari.context :as spx]
    [sieppari.core :as sp])
   (:import
    clojure.lang.Keyword
    clojure.lang.MapEntry
+   java.util.Map
    java.util.Map$Entry
    io.vertx.core.Vertx
    io.vertx.core.Handler
@@ -26,11 +27,11 @@
    io.vertx.core.http.HttpServerResponse
    io.vertx.ext.web.RoutingContext))
 
-(defn cookies
-  []
+;; --- Cookies
+
+(def cookies
   (letfn [(parse-cookie [^Cookie item]
-            [(.getName item)
-             {:value (.getValue item)}])
+            [(.getName item) (.getValue item)])
           (encode-cookie [name data]
             (cond-> (Cookie/cookie ^String name ^String (:value data))
               (:http-only data) (.setHttpOnly true)
@@ -40,42 +41,62 @@
           (add-cookie [^HttpServerResponse res [name data]]
             (.addCookie res (encode-cookie name data)))
           (enter [data]
-            (let [^HttpServerRequest req (get-in data [:request :request])
+            (let [^HttpServerRequest req (get-in data [:request ::vw/request])
                   cookies (into {} (map parse-cookie) (vals (.cookieMap req)))]
               (update data :request assoc :cookies cookies)))
           (leave [data]
             (let [cookies (get-in data [:response :cookies])
-                  res (get-in data [:request :response])]
+                  res (get-in data [:request ::vw/response])]
               (when (map? cookies)
                 (run! (partial add-cookie res) cookies))
               data))]
     {:enter enter
      :leave leave}))
 
+;; --- Headers
+
 (def lowercase-keys-t
   (map (fn [^Map$Entry entry]
          (MapEntry. (.toLowerCase (.getKey entry)) (.getValue entry)))))
 
-(defn headers
-  []
-  (letfn [(parse [ctx]
-            (let [^HttpServerRequest request (:request ctx)]
+(def headers
+  (letfn [(parse [req]
+            (let [^HttpServerRequest request (::vw/request req)]
               (into {} lowercase-keys-t (.headers request))))
 
           (enter [data]
             (update data :request assoc :headers (parse (:request data))))
 
           (leave [data]
-            (let [^HttpServerResponse res (get-in data [:request :response])
+            (let [^HttpServerResponse res (get-in data [:request ::vw/response])
                   headers (get-in data [:response :headers])]
               (run! (fn [[key value]]
                       (.putHeader ^HttpServerResponse res
                                   ^String (name key)
-                                  ^String value))
+                                  ^String (str value)))
                     headers)
               data))]
     {:enter enter
      :leave leave}))
+
+;; --- Query Params
+
+(def keyword-keys-t
+  (map (fn [^Map$Entry entry]
+         (Map/entry (keyword (.getKey entry)) (.getValue entry)))))
+
+;; TODO: allow multiple values
+
+(def query-params
+  (letfn [(parse [req]
+            (into {}
+                  (comp lowercase-keys-t keyword-keys-t)
+                  (.params ^HttpServerRequest (::vw/request req))))
+          (enter [data]
+            (update data :request assoc :query-params (parse (:request data))))]
+    {:enter enter}))
+
+;; --- CORS
 
 (s/def ::origin string?)
 (s/def ::allow-credentials boolean?)
