@@ -30,45 +30,43 @@
 
 ;; --- Cookies
 
-(def cookies
-  (letfn [(parse-cookie [^Cookie item]
-            [(.getName item) (.getValue item)])
-          (encode-cookie [name data]
-            (cond-> (Cookie/cookie ^String name ^String (:value data))
-              (:http-only data) (.setHttpOnly true)
-              (:domain data) (.setDomain (:domain data))
-              (:path data) (.setPath (:path data))
-              (:secure data) (.setSecure true)))
-          (add-cookie [^HttpServerResponse res [name data]]
-            (.addCookie res (encode-cookie name data)))
-          (enter [data]
+(defn- build-cookie
+  [name data]
+  (cond-> (Cookie/cookie ^String name ^String (:value data))
+    (:http-only data) (.setHttpOnly true)
+    (:domain data) (.setDomain (:domain data))
+    (:path data) (.setPath (:path data))
+    (:secure data) (.setSecure true)))
+
+(defn cookies
+  []
+  {:enter (fn [data]
             (let [^HttpServerRequest req (get-in data [:request ::vw/request])
+                  parse-cookie (fn [^Cookie item] [(.getName item) (.getValue item)])
                   cookies (into {} (map parse-cookie) (vals (.cookieMap req)))]
               (update data :request assoc :cookies cookies)))
-          (leave [data]
+   :leave (fn [data]
             (let [cookies (get-in data [:response :cookies])
-                  res (get-in data [:request ::vw/response])]
+                  ^HttpServerResponse res (get-in data [:request ::vw/response])]
               (when (map? cookies)
-                (run! (partial add-cookie res) cookies))
-              data))]
-    {:enter enter
-     :leave leave}))
-
+                (reduce-kv #(.addCookie res (build-cookie %1 %2)) nil cookies))
+              data))})
 ;; --- Headers
 
-(def lowercase-keys-t
+(def ^:private lowercase-keys-t
   (map (fn [^Map$Entry entry]
          (MapEntry. (.toLowerCase (.getKey entry)) (.getValue entry)))))
 
-(def headers
-  (letfn [(parse [req]
-            (let [^HttpServerRequest request (::vw/request req)]
-              (into {} lowercase-keys-t (.headers request))))
+(defn- parse-headers
+  [req]
+  (let [^HttpServerRequest request (::vw/request req)]
+    (into {} lowercase-keys-t (.headers request))))
 
-          (enter [data]
-            (update data :request assoc :headers (parse (:request data))))
-
-          (leave [data]
+(defn headers
+  []
+  {:enter (fn [data]
+            (update data :request assoc :headers (parse-headers (:request data))))
+   :leave (fn [data]
             (let [^HttpServerResponse res (get-in data [:request ::vw/response])
                   headers (get-in data [:response :headers])]
               (run! (fn [[key value]]
@@ -76,9 +74,7 @@
                                   ^String (name key)
                                   ^String (str value)))
                     headers)
-              data))]
-    {:enter enter
-     :leave leave}))
+              data))})
 
 ;; --- Params
 
@@ -104,27 +100,31 @@
              (transient {})
              (.params ^HttpServerResponse request)))))
 
-(def params
-  {:enter (fn [data]
-            (let [params (parse-params (:request data))]
-              (update data :request assoc :params params)))})
+(defn params
+  ([] (params nil))
+  ([{:keys [attr] :or {attr :params}}]
+   {:enter (fn [data]
+             (let [params (parse-params (:request data))]
+               (update data :request assoc attr params)))}))
 
 ;; --- Uploads
 
-(def uploads
-  {:enter (fn [data]
-            (let [context (get-in data [:request ::vw/routing-context])
-                  uploads (reduce (fn [acc ^FileUpload upload]
-                                    (assoc acc
-                                           (keyword (.name upload))
-                                           {:type :uploaded-file
-                                            :mtype (.contentType upload)
-                                            :path (.uploadedFileName upload)
-                                            :name (.fileName upload)
-                                            :size (.size upload)}))
-                                  (transient {})
-                                  (.fileUploads ^RoutingContext context))]
-              (update data :request assoc :uploads (persistent! uploads))))})
+(defn uploads
+  ([] (uploads nil))
+  ([{:keys [attr] :or {attr :uploads}}]
+   {:enter (fn [data]
+             (let [context (get-in data [:request ::vw/routing-context])
+                   uploads (reduce (fn [acc ^FileUpload upload]
+                                     (assoc acc
+                                            (keyword (.name upload))
+                                            {:type :uploaded-file
+                                             :mtype (.contentType upload)
+                                             :path (.uploadedFileName upload)
+                                             :name (.fileName upload)
+                                             :size (.size upload)}))
+                                   (transient {})
+                                   (.fileUploads ^RoutingContext context))]
+               (update data :request assoc attr (persistent! uploads))))}))
 
 ;; --- CORS
 
