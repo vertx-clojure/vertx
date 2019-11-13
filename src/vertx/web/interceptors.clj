@@ -25,6 +25,7 @@
    io.vertx.core.http.Cookie
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse
+   io.vertx.ext.web.FileUpload
    io.vertx.ext.web.RoutingContext))
 
 ;; --- Cookies
@@ -108,6 +109,23 @@
             (let [params (parse-params (:request data))]
               (update data :request assoc :params params)))})
 
+;; --- Uploads
+
+(def handle-uploads
+  {:enter (fn [data]
+            (let [rcontext (get-in data [:request ::vw/routing-context])
+                  uploads (.fileUploads ^RoutingContext rcontext)
+                  uploads (reduce (fn [acc ^FileUpload upload]
+                                    (assoc acc
+                                           (keyword (.name upload))
+                                           {:type :uploaded-file
+                                            :mtype (.contentType upload)
+                                            :path (.uploadedFileName upload)
+                                            :name (.fileName upload)
+                                            :size (.size upload)}))
+                                  {}
+                                  uploads)]
+              (assoc-in data [:request :upload-params] uploads)))})
 
 
 
