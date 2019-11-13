@@ -93,7 +93,9 @@
 (defn- router-handler
   [router {:keys [path method] :as ctx}]
   (let [{:keys [data path-params] :as match} (rt/match-by-path router path)
-        handler-fn (get data method default-handler)
+        handler-fn (or (get data method)
+                       (get data :all)
+                       default-handler)
         interceptors (get data :interceptors)
         ctx (assoc ctx ::match match :path-params path-params)]
     (if (empty? interceptors)

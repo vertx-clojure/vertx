@@ -87,7 +87,7 @@
                       (.runOnContext
                        ^Context ctx
                        ^Handler (reify Handler
-                                  (handle [_ v]
+                                  (handle [_ v']
                                     (if e
                                       (p/reject! d e)
                                       (p/resolve! d v)))))))
