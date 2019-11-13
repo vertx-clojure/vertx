@@ -111,10 +111,9 @@
 
 ;; --- Uploads
 
-(def handle-uploads
+(def uploads
   {:enter (fn [data]
-            (let [rcontext (get-in data [:request ::vw/routing-context])
-                  uploads (.fileUploads ^RoutingContext rcontext)
+            (let [context (get-in data [:request ::vw/routing-context])
                   uploads (reduce (fn [acc ^FileUpload upload]
                                     (assoc acc
                                            (keyword (.name upload))
@@ -123,11 +122,9 @@
                                             :path (.uploadedFileName upload)
                                             :name (.fileName upload)
                                             :size (.size upload)}))
-                                  {}
-                                  uploads)]
-              (assoc-in data [:request :upload-params] uploads)))})
-
-
+                                  (transient {})
+                                  (.fileUploads ^RoutingContext context))]
+              (update data :request assoc :uploads (persistent! uploads))))})
 
 ;; --- CORS
 
