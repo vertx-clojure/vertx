@@ -79,22 +79,37 @@
     {:enter enter
      :leave leave}))
 
-;; --- Query Params
+;; --- Params
 
-(def keyword-keys-t
-  (map (fn [^Map$Entry entry]
-         (Map/entry (keyword (.getKey entry)) (.getValue entry)))))
+(defn- parse-param-entry
+  [acc ^Map$Entry item]
+  (let [key (keyword (.toLowerCase (.getKey item)))
+        prv (get acc key ::default)]
+    (cond
+      (= prv ::default)
+      (assoc! acc key (.getValue item))
 
-;; TODO: allow multiple values
+      (vector? prv)
+      (assoc! acc key (conj prv (.getValue item)))
 
-(def query-params
-  (letfn [(parse [req]
-            (into {}
-                  (comp lowercase-keys-t keyword-keys-t)
-                  (.params ^HttpServerRequest (::vw/request req))))
-          (enter [data]
-            (update data :request assoc :query-params (parse (:request data))))]
-    {:enter enter}))
+      :else
+      (assoc! acc key [prv (.getValue item)]))))
+
+(defn- parse-params
+  [req]
+  (let [request (::vw/request req)]
+    (persistent!
+     (reduce parse-param-entry
+             (transient {})
+             (.params ^HttpServerResponse request)))))
+
+(def params
+  {:enter (fn [data]
+            (let [params (parse-params (:request data))]
+              (update data :request assoc :params params)))})
+
+
+
 
 ;; --- CORS
 
