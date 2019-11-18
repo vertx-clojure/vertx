@@ -11,11 +11,15 @@
             [promesa.core :as p]
             [vertx.util :as vu])
   (:import
+   java.util.Map$Entry
+   clojure.lang.MapEntry
    io.vertx.core.Vertx
    io.vertx.core.Verticle
    io.vertx.core.Handler
    io.vertx.core.Future
+   io.vertx.core.MultiMap
    io.vertx.core.Context
+   io.vertx.core.buffer.Buffer
    io.vertx.core.http.HttpServer
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse
@@ -25,6 +29,36 @@
 (declare resolve-handler)
 
 ;; --- Public Api
+
+(declare -handle-response)
+(declare -handle-body)
+
+(defn ->headers
+  [^HttpServerRequest request]
+  (let [headers (.headers request)
+        it (.iterator ^MultiMap headers)]
+    (loop [m (transient {})]
+      (if (.hasNext it)
+        (let [^Map$Entry me (.next it)
+              key (.toLowerCase (.getKey me))
+              val (.getValue me)]
+          (recur (assoc! m key val)))
+        (persistent! m)))))
+
+(defn- ->request
+  [^HttpServerRequest request]
+  {:method (-> request .rawMethod .toLowerCase keyword)
+   :path (.path request)
+   :headers (->headers request)
+   ::request request
+   ::response (.response request)})
+
+(defn handler
+  [vsm f]
+  (reify Handler
+    (handle [this request]
+      (let [ctx (->request request)]
+        (-handle-response (f ctx) ctx)))))
 
 (s/def :vertx.http/handler fn?)
 (s/def :vertx.http/host string?)
@@ -60,15 +94,48 @@
     (when port (.setPort opts port))
     opts))
 
-(defn- fn->handler
-  [f]
-  (reify Handler
-    (handle [_ request]
-      (f request))))
-
 (defn- resolve-handler
   [handler]
   (cond
-    (fn? handler) (fn->handler handler)
+    (fn? handler) (vu/fn->handler handler)
     (instance? Handler handler) handler
     :else (throw (ex-info "invalid handler" {}))))
+
+(defprotocol IAsyncResponse
+  (-handle-response [_ _]))
+
+(defprotocol IAsyncBody
+  (-handle-body [_ _]))
+
+(extend-protocol IAsyncResponse
+  java.util.concurrent.CompletionStage
+  (-handle-response [data ctx]
+    (p/then' data #(-handle-response % ctx)))
+
+  clojure.lang.IPersistentMap
+  (-handle-response [data ctx]
+    (let [status (or (:status data) 200)
+          body (:body data)
+          res (::response ctx)]
+      (.setStatusCode ^HttpServerResponse res status)
+      (-handle-body body res))))
+
+(extend-protocol IAsyncBody
+  (Class/forName "[B")
+  (-handle-body [data res]
+    (.end ^HttpServerResponse res (Buffer/buffer data)))
+
+  Buffer
+  (-handle-body [data res]
+    (.end ^HttpServerResponse res ^Buffer data))
+
+  nil
+  (-handle-body [data res]
+    (.putHeader ^HttpServerResponse res "content-length" "0")
+    (.end ^HttpServerResponse res))
+
+  String
+  (-handle-body [data res]
+    (let [length (count data)]
+      (.putHeader ^HttpServerResponse res "content-length" (str length))
+      (.end ^HttpServerResponse res data))))

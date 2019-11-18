@@ -10,7 +10,7 @@
             [promesa.core :as p]
             [sieppari.core :as sp]
             [reitit.core :as rt]
-            [vertx.http :as vxh]
+            [vertx.http :as vh]
             [vertx.util :as vu])
   (:import
    clojure.lang.Keyword
@@ -32,18 +32,13 @@
    io.vertx.ext.web.handler.ResponseTimeHandler
    io.vertx.ext.web.handler.LoggerHandler))
 
-;; --- Constants & Declarations
-
-(declare -handle-response)
-(declare -handle-body)
-
 ;; --- Public Api
 
 (s/def ::wrap-handler
   (s/or :fn fn?
         :vec (s/every fn? :kind vector?)))
 
-(defn- make-ctx
+(defn- ->request
   [^RoutingContext routing-context]
   (let [^HttpServerRequest request (.request ^RoutingContext routing-context)
         ^HttpServerResponse response (.response ^RoutingContext routing-context)
@@ -114,56 +109,18 @@
                  time-response? true}
             :as options}]
    (let [rtr (rt/router routes options)
-         hdr #(router-handler rtr %)]
+         f #(router-handler rtr %)]
      (fn [^Router router]
        (let [^Route route (.route router)]
          (when time-response? (.handler route (ResponseTimeHandler/create)))
          (when log-requests? (.handler route (LoggerHandler/create)))
-
          (.handler route (doto (BodyHandler/create true)
                            (.setDeleteUploadedFilesOnEnd delete-uploads?)
                            (.setUploadsDirectory upload-dir)))
          (.handler route (reify Handler
                            (handle [_ context]
-                             (let [ctx (make-ctx context)]
-                               (-> (p/do! (hdr ctx))
-                                   (p/then' #(-handle-response % ctx))
-                                   (p/catch #(do (prn %) (.fail (:context ctx) %)))))))))
+                             (let [req (->request context)]
+                               (-> (p/do! (f req))
+                                   (p/then' #(vh/-handle-response % req))
+                                   (p/catch #(.fail (::routing-context req) %))))))))
        router))))
-
-;; --- Impl
-
-(defprotocol IAsyncResponse
-  (-handle-response [_ _]))
-
-(extend-protocol IAsyncResponse
-  clojure.lang.IPersistentMap
-  (-handle-response [data ctx]
-    (let [status (or (:status data) 200)
-          body (:body data)
-          res (::response ctx)]
-      (.setStatusCode ^HttpServerResponse res status)
-      (-handle-body body res))))
-
-(defprotocol IAsyncBody
-  (-handle-body [_ _]))
-
-(extend-protocol IAsyncBody
-  (Class/forName "[B")
-  (-handle-body [data res]
-    (.end ^HttpServerResponse res (Buffer/buffer data)))
-
-  Buffer
-  (-handle-body [data res]
-    (.end ^HttpServerResponse res ^Buffer data))
-
-  nil
-  (-handle-body [data res]
-    (.putHeader ^HttpServerResponse res "content-length" "0")
-    (.end ^HttpServerResponse res))
-
-  String
-  (-handle-body [data res]
-    (let [length (count data)]
-      (.putHeader ^HttpServerResponse res "content-length" (str length))
-      (.end ^HttpServerResponse res data))))

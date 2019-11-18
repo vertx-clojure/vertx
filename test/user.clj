@@ -4,15 +4,16 @@
    [clojure.test :as test]
    [clojure.tools.namespace.repl :as r]
    [clojure.walk :refer [macroexpand-all]]
-   [integrant.core :as ig]
+   [mount.core :as mount :refer [defstate]]
    [pohjavirta.server :as pohjavirta]
    [promesa.core :as p]
    [reitit.core :as rt]
-   [vertx.core :as vx]
-   [vertx.eventbus :as vxe]
-   [vertx.http :as vxh]
-   [vertx.web :as vxw]
-   [vertx.web.interceptors :as vxi])
+   [jsonista.core :as j]
+   [vertx.core :as vc]
+   [vertx.eventbus :as ve]
+   [vertx.http :as vh]
+   [vertx.web :as vw]
+   [vertx.web.interceptors :as vwi])
   (:import
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse))
@@ -21,173 +22,102 @@
 
 ;; --- System
 
-(defmethod ig/init-key :system
-  [_ options]
-  (vx/system options))
-
-(defmethod ig/halt-key! :system
-  [_ system]
-  (.close system))
+(defstate system
+  :start (vc/system)
+  :stop (.close system))
 
 ;; --- Echo Verticle (using eventbus)
 
-(def echo-verticle
-  (letfn [(on-message [message]
-            (println (pr-str "received:" message
-                             "on" (thr-name)))
-            (:body message))
-          (on-start [ctx]
-            (vxe/consumer ctx "test.echo" on-message))]
+;; (def echo-verticle
+;;   (letfn [(on-message [message]
+;;             (println (pr-str "received:" message
+;;                              "on" (thr-name)))
+;;             (:body message))
+;;           (on-start [ctx]
+;;             (vxe/consumer ctx "test.echo" on-message))]
 
-    (vx/verticle {:on-start on-start})))
+;;     (vc/verticle {:on-start on-start})))
 
-(defmethod ig/init-key :verticle/echo
-  [_ {:keys [system] :as options}]
-  @(vx/deploy! system echo-verticle options))
-
-(defmethod ig/halt-key! :verticle/echo
-  [_ disposable]
-  (.close disposable))
+;; (defstate echo-verticle
+;;   :start @(vc/deploy! system echo-verticle options))
 
 ;; --- Echo Verticle Actor (using eventbus)
 
 ;; This is the same as the previous echo verticle, it just reduces the
 ;; boilerplate of creating the consumer.
 
-(def echo-actor-verticle
-  (letfn [(on-message [message]
-            (println (pr-str "received:" (.body message)
-                             "on" (thr-name)))
-            (.body message))]
-    (vx/actor "test.echo2" {:on-message on-message})))
+;; (def echo-actor-verticle
+;;   (letfn [(on-message [message]
+;;             (println (pr-str "received:" (.body message)
+;;                              "on" (thr-name)))
+;;             (.body message))]
+;;     (vc/actor "test.echo2" {:on-message on-message})))
 
-(defmethod ig/init-key :verticle/echo-actor
-  [_ {:keys [system] :as options}]
-  @(vx/deploy! system echo-actor-verticle options))
-
-(defmethod ig/halt-key! :verticle/echo-actor
-  [_ disposable]
-  (.close disposable))
+;; (defstate echo-actor-verticle
+;;   :start @(vc/deploy! system echo-actor-verticle options))
 
 ;; --- Http Server Verticle
 
 (def http-verticle
-  (letfn [(handler [req]
-            (let [^HttpServerResponse response (.response ^HttpServerRequest req)]
-              (.setStatusCode response 200)
-              (.end response "Hello world vtx\n")))
-
-          (on-start [ctx]
-            (let [server (vxh/server ctx {:handler handler :port 2019})]
-              {::stop #(.close server)}))]
-    (vx/verticle {:on-start on-start})))
-
-(defmethod ig/init-key :verticle/http
-  [_ {:keys [system port] :as options}]
-  @(vx/deploy! system http-verticle options))
-
-(defmethod ig/halt-key! :verticle/http
-  [s disposable]
-  (.close disposable))
-
-;; --- Http Web Handler
-
-(def web-verticle
-  (letfn [(handler [ctx]
+  (letfn [(simple-handler [req]
+            ;; (prn req)
             {:status 200
-             :body "hello world web\n"})
+             :body (j/write-value-as-string
+                    {:method (:method req)
+                     :headers (:headers req)
+                     :path (:path req)})})
 
           (on-start [ctx]
-            (let [handler (vxw/wrap ctx handler)]
-              (vxh/server ctx {:handler handler :port 2020})))]
+            (let [handler (vh/handler ctx simple-handler)]
+              (vh/server ctx {:handler handler :port 2020})))]
+    (vc/verticle {:on-start on-start})))
 
-    (vx/verticle {:on-start on-start})))
-
-(defmethod ig/init-key :verticle/web
-  [_ {:keys [system] :as options}]
-  @(vx/deploy! system web-verticle options))
-
-(defmethod ig/halt-key! :verticle/web
-  [_ disposable]
-  (.close disposable))
+(defstate http-server-verticle
+  :start @(vc/deploy! system http-verticle {:instances 2}))
 
 ;; --- Web Router Verticle
 
 (def web-router-verticle
-  (letfn [(handler [ctx]
-            (let [params (:path-params ctx)]
-              {:status 200
-               :cookies {"foo-baz" {:value "test" :path "/foo"}}
-               :body (str "hello " (:name params) "\n")}))
-
-          (on-error [ctx err]
-            (prn "err" err))
+  (letfn [(simple-handler [req]
+            {:status 200
+             :body (j/write-value-as-string
+                    {:method (:method req)
+                     :path (:path req)})})
 
           (on-start [ctx]
-            (let [routes [["/foo/bar/:name" {:get handler}]]
-                  cors-opts {:origin "*"
-                             :allow-credentials true
-                             :allow-methods #{:post :get :patch :head :options :put}}
+            (let [routes [["/" {:all simple-handler}]]
+                  handler (vw/handler ctx (vw/router routes))]
+              (vh/server ctx {:handler handler :port 2021})))]
+    (vc/verticle {:on-start on-start})))
 
-                  router (rt/router routes {:data {:interceptors [(vxi/cookies)
-                                                                  (vxi/headers)
-                                                                  (vxi/cors cors-opts)]}})
-                  handler (vxw/wrap-router ctx router)]
-              (vxh/server ctx {:handler handler :port 2021})))]
-
-    (vx/verticle {:on-start on-start :on-error on-error})))
-
-(defmethod ig/init-key :verticle/web-router
-  [_ {:keys [system] :as options}]
-  @(vx/deploy! system web-router-verticle options))
-
-(defmethod ig/halt-key! :verticle/web-router
-  [_ disposable]
-  (.close disposable))
+(defstate web-server-with-router-verticle
+  :start @(vc/deploy! system web-router-verticle {:instances 2}))
 
 ;; --- pohjavirta
 
-(defn handler [req]
-  (let [method (:request-method req)
-        path (:uri req)]
-    {:status 200
-     :body "hello world poh\n"}))
+(defn handler
+  [req]
+  {:status 200
+   :body (j/write-value-as-string
+          {:method (:request-method req)
+           :headers (:headers req)
+           :path (:uri req)})})
 
-(defmethod ig/init-key :pohjavirta
-  [& args]
-  (let [instance (pohjavirta/create #'handler {:port 2022 :io-threads 4})]
-    (pohjavirta/start instance)
-    instance))
-
-(defmethod ig/halt-key! :pohjavirta
-  [_ server]
-  (pohjavirta/stop server))
-
-;; --- Config
-
-(def config
-  {:system {:threads 4}
-   :verticle/http {:system (ig/ref :system) :instances 1}
-   :verticle/web {:system (ig/ref :system) :instances 1}
-   :verticle/web-router {:system (ig/ref :system) :instances 1}
-   :verticle/echo {:system (ig/ref :system) :instances 1}})
-
-(def state nil)
+(defstate pohjavirta-server
+  :start (let [instance (pohjavirta/create #'handler {:port 2022 :io-threads 2})]
+           (pohjavirta/start instance)
+           instance)
+  :stop (pohjavirta/stop pohjavirta-server))
 
 ;; --- Repl
 
 (defn start
   []
-  (alter-var-root #'state (fn [state]
-                            (when (map? state) (ig/halt! state))
-                            (ig/init config)))
-  :started)
+  (mount/start))
 
 (defn stop
   []
-  (when (map? state) (ig/halt! state))
-  (alter-var-root #'state (constantly nil))
-  :stoped)
+  (mount/stop))
 
 (defn restart
   []

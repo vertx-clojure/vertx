@@ -55,28 +55,6 @@
   []
   (Vertx/currentContext))
 
-;; (defn blocking
-;;   ([prm] (blocking prm (current-context)))
-;;   ([prm ctx]
-;;    (assert (instance? Context ctx) "the first argument should be instance of Context")
-;;    (let [d (p/deferred)
-;;          bh (reify Handler
-;;               (handle [this po]
-;;                 (p/finally prm (fn [v e]
-;;                                  (if e
-;;                                    (.fail po e)
-;;                                    (.complete po v))))))
-;;          rh (reify Handler
-;;               (handle [this ar]
-;;                 (if (.succeeded ar)
-;;                   (p/resolve! d (.result ar))
-;;                   (p/reject! d (.cause ar)))))]
-
-;;      (.executeBlocking ^Context ctx
-;;                        ^Handler bh
-;;                        ^Handler rh)
-;;      d)))
-
 (defn handle-on-context
   "Attaches the context (current if not explicitly provided) to the
   promise execution chain."
