@@ -9,10 +9,12 @@
  :aliases
  {:dev
   {:extra-deps {com.bhauman/rebel-readline {:mvn/version "0.1.4"}
+                metosin/jsonista {:mvn/version "0.2.5"}
+                mount/mount {:mvn/version "0.1.16"}
                 org.clojure/clojure {:mvn/version "1.10.1"}
-                ;; io.netty/netty-transport-native-epoll {:mvn/version "4.1.39.Final"}
+                io.netty/netty-transport-native-epoll {:mvn/version "4.1.39.Final"}
                 environ/environ {:mvn/version "1.1.0"}
-                integrant/integrant {:mvn/version "0.7.0"}
+                ;; integrant/integrant {:mvn/version "0.7.0"}
                 metosin/pohjavirta {:mvn/version "0.0.1-alpha5"}
                 org.clojure/tools.namespace {:mvn/version "0.3.1"}}
    :extra-paths ["test"]}
@@ -21,7 +23,7 @@
 
   :jar
   {:extra-deps {seancorfield/depstar {:mvn/version "0.3.4"}}
-   :main-opts ["-m" "hf.depstar.jar", "target/vertx-clojure.jar"]}
+   :main-opts ["-m" "hf.depstar.jar", "target/vertx.jar"]}
 
   :ancient
   {:main-opts ["-m" "deps-ancient.deps-ancient"]
