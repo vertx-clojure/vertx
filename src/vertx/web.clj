@@ -6,31 +6,32 @@
 
 (ns vertx.web
   "High level api for http servers."
-  (:require [clojure.spec.alpha :as s]
-            [promesa.core :as p]
-            [sieppari.core :as sp]
-            [reitit.core :as rt]
-            [vertx.http :as vh]
-            [vertx.util :as vu])
+  (:require
+   [clojure.spec.alpha :as s]
+   [promesa.core :as p]
+   [sieppari.core :as sp]
+   [reitit.core :as rt]
+   [vertx.http :as vh]
+   [vertx.util :as vu])
   (:import
-   clojure.lang.Keyword
    clojure.lang.IPersistentMap
-   io.vertx.core.Vertx
-   io.vertx.core.Handler
+   clojure.lang.Keyword
    io.vertx.core.Future
+   io.vertx.core.Handler
+   io.vertx.core.Vertx
    io.vertx.core.buffer.Buffer
    io.vertx.core.http.Cookie
    io.vertx.core.http.HttpServer
+   io.vertx.core.http.HttpServerOptions
    io.vertx.core.http.HttpServerRequest
    io.vertx.core.http.HttpServerResponse
-   io.vertx.core.http.HttpServerOptions
    io.vertx.ext.web.Route
    io.vertx.ext.web.Router
    io.vertx.ext.web.RoutingContext
    io.vertx.ext.web.handler.BodyHandler
-   io.vertx.ext.web.handler.StaticHandler
+   io.vertx.ext.web.handler.LoggerHandler
    io.vertx.ext.web.handler.ResponseTimeHandler
-   io.vertx.ext.web.handler.LoggerHandler))
+   io.vertx.ext.web.handler.StaticHandler))
 
 ;; --- Public Api
 
@@ -45,6 +46,7 @@
         ^Vertx system (.vertx routing-context)]
     {:body (.getBody routing-context)
      :path (.path request)
+     :headers (vh/->headers request)
      :method (-> request .rawMethod .toLowerCase keyword)
      ::request request
      ::response response
@@ -120,7 +122,9 @@
          (.handler route (reify Handler
                            (handle [_ context]
                              (let [req (->request context)]
-                               (-> (p/do! (f req))
-                                   (p/then' #(vh/-handle-response % req))
-                                   (p/catch #(.fail (::routing-context req) %))))))))
+                               (try
+                                 (-> (vh/-handle-response (f req) req)
+                                     (p/catch' #(.fail ^RoutingContext (::routing-context req) %)))
+                                 (catch Exception cause
+                                   (.fail ^RoutingContext (::routing-context req)))))))))
        router))))

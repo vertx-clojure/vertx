@@ -28,18 +28,19 @@
 
 ;; --- Echo Verticle (using eventbus)
 
-;; (def echo-verticle
-;;   (letfn [(on-message [message]
-;;             (println (pr-str "received:" message
-;;                              "on" (thr-name)))
-;;             (:body message))
-;;           (on-start [ctx]
-;;             (vxe/consumer ctx "test.echo" on-message))]
+(def echo-verticle*
+  (letfn [(on-message [ctx message]
+            (println (pr-str "received:" message
+                             "on" (thr-name)
+                             "with ctx" ctx))
+            (:body message))
+          (on-start [ctx]
+            (ve/consumer ctx "test.echo" on-message))]
 
-;;     (vc/verticle {:on-start on-start})))
+    (vc/verticle {:on-start on-start})))
 
-;; (defstate echo-verticle
-;;   :start @(vc/deploy! system echo-verticle options))
+(defstate echo-verticle
+  :start @(vc/deploy! system echo-verticle* {:instances 4}))
 
 ;; --- Echo Verticle Actor (using eventbus)
 
