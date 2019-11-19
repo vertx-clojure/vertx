@@ -226,8 +226,8 @@ when the body is ready to be used and is available under `:body`
 keyword on the request.
 
 All additional features such that reading the query/form params,
-parse/write cookies, cors and fileuploads are provided with
-interceptors as plugable pieces:
+parse/write cookies, cors and file uploads are provided with
+interceptors as pluggable pieces:
 
 - `vertx.web.interceptors/uploads` parses the vertx uploaded file data
   structure and expose it as clojure maps under `:uploads` key.
