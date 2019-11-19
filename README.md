@@ -223,20 +223,27 @@ very similar to the one explained in `vertx.http`.
 
 The main difference with `vertx.http` is that the handler is called
 when the body is ready to be used and is available under `:body`
-keyword inside the request.
+keyword on the request.
 
 All additional features such that reading the query/form params,
-cookies, cors, file uploads are provided with interceptors as plugable
-pieces:
+parse/write cookies, cors and fileuploads are provided with
+interceptors as plugable pieces:
 
 - `vertx.web.interceptors/uploads` parses the vertx uploaded file data
   structure and expose it as clojure maps under `:uploads` key.
 - `vertx.web.interceptors/params` parses the query string and form
-  params in the body if the content-type is appropriate.
+  params in the body if the content-type is appropriate and exposes
+  them under `:params`.
 - `vertx.web.interceptors/cors` properly sets the CORS headers.
 - `vertx.web.interceptors/cookies` handles the cookies reading from
   the request and cookies writing from the response.
 
 
+## License ##
 
+```
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+```
 
