@@ -5,12 +5,12 @@
   <artifactId>vertx-clojure</artifactId>
   <version>0.0.0-alpha1-0</version>
   <name>vertx-clojure</name>
-  <description>Vert.x bindings for Clojure</description>
+  <description>Vert.x adapter for Clojure</description>
   <url>https://github.com/funcool/vertx-clojure</url>
   <scm>
-    <connection>scm:git:git://github.com/funcool/vertx-clojure.git</connection>
-    <developerConnection>scm:git:ssh://git@github.com/funcool/vertx-clojure.git</developerConnection>
-    <url>https://github.com/funcool/vertx-clojure</url>
+    <connection>scm:git:git://github.com/vertx-clojure/vertx.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/vertx-clojure/vertx.git</developerConnection>
+    <url>https://github.com/vertx-clojure/vertx</url>
     <tag>master</tag>
   </scm>
   <build>
