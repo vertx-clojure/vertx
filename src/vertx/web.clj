@@ -7,6 +7,7 @@
 (ns vertx.web
   "High level api for http servers."
   (:require
+   [clojure.tools.logging :as log]
    [clojure.spec.alpha :as s]
    [promesa.core :as p]
    [sieppari.core :as sp]
@@ -48,8 +49,8 @@
      :path (.path request)
      :headers (vh/->headers request)
      :method (-> request .rawMethod .toLowerCase keyword)
-     ::request request
-     ::response response
+     ::vh/request request
+     ::vh/response response
      ::execution-context (.getContext system)
      ::routing-context routing-context}))
 
@@ -81,6 +82,12 @@
     {:status 405}
     {:status 404}))
 
+(defn- default-on-error
+  [err req]
+  (log/error err)
+  {:status 500
+   :body "Internal server error!\n"})
+
 (defn- run-chain
   [ctx chain handler]
   (let [d (p/deferred)]
@@ -103,10 +110,12 @@
   ([routes] (router routes {}))
   ([routes {:keys [delete-uploads?
                    upload-dir
+                   on-error
                    log-requests?
                    time-response?]
             :or {delete-uploads? true
                  upload-dir "/tmp/vertx.uploads"
+                 on-error default-on-error
                  log-requests? false
                  time-response? true}
             :as options}]
@@ -116,15 +125,32 @@
        (let [^Route route (.route router)]
          (when time-response? (.handler route (ResponseTimeHandler/create)))
          (when log-requests? (.handler route (LoggerHandler/create)))
-         (.handler route (doto (BodyHandler/create true)
-                           (.setDeleteUploadedFilesOnEnd delete-uploads?)
-                           (.setUploadsDirectory upload-dir)))
-         (.handler route (reify Handler
-                           (handle [_ context]
-                             (let [req (->request context)]
-                               (try
-                                 (-> (vh/-handle-response (f req) req)
-                                     (p/catch' #(.fail ^RoutingContext (::routing-context req) %)))
-                                 (catch Exception cause
-                                   (.fail ^RoutingContext (::routing-context req)))))))))
-       router))))
+
+         (doto route
+           (.failureHandler
+            (reify Handler
+              (handle [_ rc]
+                (let [err (.failure ^RoutingContext rc)
+                      req (.get ^RoutingContext rc "vertx$clj$req")]
+                  (-> (p/do! (on-error err req))
+                      (vh/-handle-response req))))))
+
+           (.handler
+            (doto (BodyHandler/create true)
+              (.setDeleteUploadedFilesOnEnd delete-uploads?)
+              (.setUploadsDirectory upload-dir)))
+
+
+           (.handler
+            (reify Handler
+              (handle [_ rc]
+                (let [req (->request rc)
+                      efn (fn [err]
+                            (.put ^RoutingContext rc "vertx$clj$req" req)
+                            (.fail ^RoutingContext rc err))]
+                  (try
+                    (-> (vh/-handle-response (f req) req)
+                        (p/catch' efn))
+                    (catch Exception err
+                      (efn err)))))))))
+         router))))

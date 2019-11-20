@@ -14,13 +14,13 @@ Example code on `resources/user.clj` file.
 Using `deps.edn`:
 
 ```clojure
-vertx-clojure/vertx {:mvn/version "0.0.0-alpha1"}
+vertx-clojure/vertx {:mvn/version "0.0.0-SNAPSHOT"}
 ```
 
 Using Leiningen:
 
 ```clojure
-[vertx-clojure/vertx "0.0.0-alpha1"]
+[vertx-clojure/vertx "0.0.0-SNAPSHOT"]
 ```
 
 ## User Guide

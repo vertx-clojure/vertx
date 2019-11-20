@@ -11,6 +11,7 @@
    [clojure.string :as str]
    [promesa.core :as p]
    [reitit.core :as r]
+   [vertx.http :as vh]
    [vertx.web :as vw]
    [sieppari.context :as spx]
    [sieppari.core :as sp])
@@ -42,13 +43,13 @@
 (defn cookies
   []
   {:enter (fn [data]
-            (let [^HttpServerRequest req (get-in data [:request ::vw/request])
+            (let [^HttpServerRequest req (get-in data [:request ::vh/request])
                   parse-cookie (fn [^Cookie item] [(.getName item) (.getValue item)])
                   cookies (into {} (map parse-cookie) (vals (.cookieMap req)))]
               (update data :request assoc :cookies cookies)))
    :leave (fn [data]
             (let [cookies (get-in data [:response :cookies])
-                  ^HttpServerResponse res (get-in data [:request ::vw/response])]
+                  ^HttpServerResponse res (get-in data [:request ::vh/response])]
               (when (map? cookies)
                 (reduce-kv #(.addCookie res (build-cookie %1 %2)) nil cookies))
               data))})
@@ -80,7 +81,7 @@
   ([] (params nil))
   ([{:keys [attr] :or {attr :params}}]
    {:enter (fn [data]
-             (let [request (get-in data [:request ::vw/request])
+             (let [request (get-in data [:request ::vh/request])
                    params (parse-params request)]
                (update data :request assoc attr params)))}))
 
