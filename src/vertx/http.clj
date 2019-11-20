@@ -101,6 +101,16 @@
     (instance? Handler handler) handler
     :else (throw (ex-info "invalid handler" {}))))
 
+(defn- assign-status-and-headers!
+  [^HttpServerResponse res response]
+  (let [headers (:headers response)
+        status (:status response 200)
+        it (.iterator headers)]
+    (when (map? headers)
+      (vu/doseq [[key val] headers]
+        (.putHeader res ^String (name key) ^String (str val))))
+    (.setStatusCode res status)))
+
 (defprotocol IAsyncResponse
   (-handle-response [_ _]))
 
@@ -114,10 +124,9 @@
 
   clojure.lang.IPersistentMap
   (-handle-response [data ctx]
-    (let [status (or (:status data) 200)
-          body (:body data)
+    (let [body (:body data)
           res (::response ctx)]
-      (.setStatusCode ^HttpServerResponse res status)
+      (assign-status-and-headers! res data)
       (-handle-body body res))))
 
 (extend-protocol IAsyncBody

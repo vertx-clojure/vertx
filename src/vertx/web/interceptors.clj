@@ -13,6 +13,7 @@
    [reitit.core :as r]
    [vertx.http :as vh]
    [vertx.web :as vw]
+   [vertx.util :as vu]
    [sieppari.context :as spx]
    [sieppari.core :as sp])
   (:import
@@ -42,17 +43,20 @@
 
 (defn cookies
   []
-  {:enter (fn [data]
-            (let [^HttpServerRequest req (get-in data [:request ::vh/request])
-                  parse-cookie (fn [^Cookie item] [(.getName item) (.getValue item)])
-                  cookies (into {} (map parse-cookie) (vals (.cookieMap req)))]
-              (update data :request assoc :cookies cookies)))
-   :leave (fn [data]
-            (let [cookies (get-in data [:response :cookies])
-                  ^HttpServerResponse res (get-in data [:request ::vh/response])]
-              (when (map? cookies)
-                (reduce-kv #(.addCookie res (build-cookie %1 %2)) nil cookies))
-              data))})
+  {:enter
+   (fn [data]
+     (let [^HttpServerRequest req (get-in data [:request ::vh/request])
+           parse-cookie (fn [^Cookie item] [(.getName item) (.getValue item)])
+           cookies (into {} (map parse-cookie) (vals (.cookieMap req)))]
+       (update data :request assoc :cookies cookies)))
+   :leave
+   (fn [data]
+     (let [cookies (get-in data [:response :cookies])
+           ^HttpServerResponse res (get-in data [:request ::vh/response])]
+       (when (map? cookies)
+         (vu/doseq [[key val] cookies]
+           (.addCookie res (build-cookie key val))))
+       data))})
 
 ;; --- Params
 
