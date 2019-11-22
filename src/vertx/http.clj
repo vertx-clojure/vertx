@@ -60,7 +60,8 @@
       (let [ctx (->request request)]
         (-handle-response (f ctx) ctx)))))
 
-(s/def :vertx.http/handler fn?)
+(s/def :vertx.http/handler
+  (s/or :fn fn? :handler #(instance? Handler %)))
 (s/def :vertx.http/host string?)
 (s/def :vertx.http/port pos?)
 (s/def ::server-options
@@ -104,8 +105,7 @@
 (defn- assign-status-and-headers!
   [^HttpServerResponse res response]
   (let [headers (:headers response)
-        status (:status response 200)
-        it (.iterator headers)]
+        status (:status response 200)]
     (when (map? headers)
       (vu/doseq [[key val] headers]
         (.putHeader res ^String (name key) ^String (str val))))
