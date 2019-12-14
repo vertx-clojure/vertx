@@ -55,7 +55,9 @@
            ^HttpServerResponse res (get-in data [:request ::vh/response])]
        (when (map? cookies)
          (vu/doseq [[key val] cookies]
-           (.addCookie res (build-cookie key val))))
+           (if (nil? val)
+             (.removeCookie res key)
+             (.addCookie res (build-cookie key val)))))
        data))})
 
 ;; --- Params
@@ -107,7 +109,6 @@
                                    (transient {})
                                    (.fileUploads ^RoutingContext context))]
                (update data :request assoc attr (persistent! uploads))))}))
-
 
 ;; --- Errors
 
