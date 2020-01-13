@@ -30,7 +30,7 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-core</artifactId>
-      <version>3.8.1</version>
+      <version>3.8.4</version>
     </dependency>
     <dependency>
       <groupId>metosin</groupId>
@@ -40,12 +40,17 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-web</artifactId>
-      <version>3.8.1</version>
+      <version>3.8.4</version>
     </dependency>
     <dependency>
       <groupId>funcool</groupId>
       <artifactId>promesa</artifactId>
       <version>5.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-web-client</artifactId>
+      <version>3.8.4</version>
     </dependency>
     <dependency>
       <groupId>metosin</groupId>
