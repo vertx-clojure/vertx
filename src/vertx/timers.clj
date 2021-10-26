@@ -8,7 +8,6 @@
   "The timers and async scheduled tasks."
   (:require
    [clojure.spec.alpha :as s]
-   [promesa.core :as p]
    [vertx.util :as vu])
   (:import
    io.vertx.core.Vertx
@@ -24,7 +23,7 @@
       (close [_]
         (.cancelTimer system timer-id)))))
 
-(defn sechdule-periodic!
+(defn schedule-periodic!
   [vsm ms f]
   (let [^Vertx system (vu/resolve-system vsm)
         ^Handler handler (vu/fn->handler (fn [v] (f)))

@@ -12,7 +12,7 @@
   (:import
    io.vertx.core.Context
    io.vertx.core.DeploymentOptions
-   io.vertx.core.Future
+   io.vertx.core.Promise
    io.vertx.core.Handler
    io.vertx.core.Verticle
    io.vertx.core.Vertx
@@ -54,6 +54,21 @@
 (defn current-context
   []
   (Vertx/currentContext))
+
+(defn execute-blocking
+  "execute blocking task (current if not explicitly provided), return the promise"
+  ([task] (execute-blocking task (current-context) true))
+  ([task ctx ordered]
+   (let [d (p/deferred)
+         h (vu/deferred->handler d)
+         wrap-task (reify Handler
+                     (handle [_ promise]
+                       (.complete promise (task))
+                       ))
+         ]
+     (.executeBlocking ctx wrap-task  ordered h)
+     ;; return the handle promise
+     d)))
 
 (defn handle-on-context
   "Attaches the context (current if not explicitly provided) to the
@@ -157,7 +172,7 @@
         (vreset! vsm instance)
         (vreset! ctx context))
       (getVertx [_] @vsm)
-      (^void start [_ ^Future o]
+      (^void start [_ ^Promise o]
        (-> (p/do! (on-start @ctx))
            (p/handle (fn [state error]
                        (if error
@@ -168,7 +183,7 @@
                            (when (map? state)
                              (vswap! lst merge state))
                            (.complete o)))))))
-      (^void stop [_ ^Future o]
+      (^void stop [_ ^Promise o]
        (p/handle (p/do! (on-stop @ctx @lst))
                  (fn [_ err]
                    (if err
@@ -216,6 +231,3 @@
     (when threads (.setEventLoopPoolSize opts (int threads)))
     (when on-error (.exceptionHandler (vu/fn->handler on-error)))
     opts))
-
-
-

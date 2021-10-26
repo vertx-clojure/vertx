@@ -49,7 +49,7 @@
     {:body (.getBody routing-context)
      :path (.path request)
      :headers (vh/->headers (.headers request))
-     :method (-> request .rawMethod .toLowerCase keyword)
+     :method (-> request .method .name)
      ::vh/request request
      ::vh/response response
      ::execution-context (.getContext system)
