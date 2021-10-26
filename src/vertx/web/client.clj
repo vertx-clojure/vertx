@@ -112,23 +112,28 @@
     (keyword? data) (str data)
     (symbol? data) (str data)
     ;; if vector, it should convert into JsonArray
-    (vector? data) (let [array (JsonArray.)]
-                     (map (fn [x] (.add array (toJson x)))
+    (vector? data) (map (fn [array x] (.add array (toJson x))
+                          array)
+                        (JsonArray.)
                           data)
-                     array)
-    (list? data)  (let [array (JsonArray.)]
-                    (map (fn [x] (.add array (toJson x)))
+
+    (list? data)   (map (fn [array x] (.add array (toJson x))
+                          array)
+                        (JsonArray.)
                          data)
-                    array)
-    (set? data)   (let [array (JsonArray.)]
-                    (map (fn [x] (.add array (toJson x)))
-                         data)
-                    array)
+
+    (set? data)    (reduce (fn [array x] (.add array (toJson x))
+                             array)
+                           (JsonArray.)
+                           data)
+
     ;; if map, it should convert into a JsonObject and add other into it
-    (map? data)  (let [js (JsonObject.)]
-                   (map (fn [x y] (.put js (str x) (toJson y)))
-                        data)
-                   js)
+    (map? data)    (reduce (fn [js [x y]]
+                             (.put js (.substring (str x) 1) (toJson y))
+                             js)
+                           (JsonObject.)
+                           data)
+
     true (JsonObject/mapFrom data)
 ))
 
@@ -214,7 +219,7 @@
 
        ;; convert the data transform
        (fn
-         ([type data]
+         ([type data]2
             (let [httpRequest (if data
                                 (cond
                                   (= type :query)  (.send (toQuery req data))
