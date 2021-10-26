@@ -85,9 +85,10 @@
       (.setFollowRedirects option (:followRedirects opt)) )
     ;; add headers
     (when (:headers opt)
-      (map (fn [[name value]]
-             (.putHeader option (str name) (str value)) )
-           (:headers opt) ))
+      (reduce (fn [_ [name value]]
+                (.putHeader option (str name) (str value)) )
+              {}
+              (:headers opt) ))
     (when (:proxy opt)
       (.setProxyOptions option
                         (to-proxy-opt (:proxy opt)) ))
@@ -112,15 +113,15 @@
     (keyword? data) (str data)
     (symbol? data) (str data)
     ;; if vector, it should convert into JsonArray
-    (vector? data) (map (fn [array x] (.add array (toJson x))
-                          array)
-                        (JsonArray.)
-                          data)
+    (vector? data) (reduce (fn [array x] (.add array (toJson x))
+                             array)
+                           (JsonArray.)
+                           data)
 
-    (list? data)   (map (fn [array x] (.add array (toJson x))
-                          array)
-                        (JsonArray.)
-                         data)
+    (list? data)   (reduce (fn [array x] (.add array (toJson x))
+                             array)
+                           (JsonArray.)
+                           data)
 
     (set? data)    (reduce (fn [array x] (.add array (toJson x))
                              array)
@@ -141,12 +142,13 @@
   "convert the immutable-map into Form map, if value is a list, it would be convert into MultiMap"
   [data]
   (let [form (MultiMap/caseInsensitiveMultiMap)]
-    (map (fn [i v]
-           (cond
-             (instance? Iterable data) (.add form i v)
-             true (.add form i v) ))
-         data)
-  form))
+    (reduce (fn [_ [i v]]
+              (cond
+                (instance? Iterable data) (.add form i v)
+                true (.add form i v) ))
+            {}
+            data))
+  form)
 
 (defn- toBuffer
   "conver the data into buffer, the byte"
@@ -157,7 +159,7 @@
 (defn- toQuery
   "use immutable-map as request query"
   [req header-map]
-  (map (fn [i v] (.addQueryParam req (str i) (str v))) header-map)
+  (reduce (fn [_ [i v]] (.addQueryParam req (str i) (str v))) {} header-map)
   ;; must return the req
   req)
 
@@ -219,7 +221,7 @@
 
        ;; convert the data transform
        (fn
-         ([type data]2
+         ([type data]
             (let [httpRequest (if data
                                 (cond
                                   (= type :query)  (.send (toQuery req data))
