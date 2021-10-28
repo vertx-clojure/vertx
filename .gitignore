@@ -5,6 +5,7 @@ pom.xml
 pom.xml.asc
 *.jar
 *.class
+.#*
 /.lein-*
 /.nrepl-port
 /*-init.clj
