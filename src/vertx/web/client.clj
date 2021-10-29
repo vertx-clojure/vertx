@@ -147,8 +147,8 @@
                 (instance? Iterable data) (.add form i v)
                 true (.add form i v) ))
             {}
-            data))
-  form)
+            data)
+  form))
 
 (defn- toBuffer
   "conver the data into buffer, the byte"

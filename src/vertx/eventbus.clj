@@ -26,6 +26,7 @@
 
 (defn consumer
   [vsm topic f]
+  "f :: Vertx -> Msg -> ReplyMsg, and it will resume the msg handler"
   (let [^EventBus bus (resolve-eventbus vsm)
         ^MessageConsumer consumer (.consumer bus ^String topic)]
     (.handler consumer (reify Handler
@@ -118,5 +119,3 @@
     (.setCodecName opts (or codec "clj:msgpack"))
     (when local? (.setLocalOnly opts true))
     opts))
-
-
