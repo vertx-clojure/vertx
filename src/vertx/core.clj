@@ -17,6 +17,7 @@
    io.vertx.core.Verticle
    io.vertx.core.Vertx
    io.vertx.core.VertxOptions
+   io.vertx.core.json.JsonObject
    java.util.function.Supplier))
 
 (declare opts->deployment-options)
@@ -219,11 +220,20 @@
       @(undeploy! vsm id))))
 
 (defn- opts->deployment-options
-  [{:keys [instances worker]}]
-  (let [opts (DeploymentOptions.)]
-    (when instances (.setInstances opts (int instances)))
-    (when worker (.setWorker opts worker))
-    opts))
+  [{:keys [instances worker config]}]
+
+  (letfn [(put [config [index value]]
+            (.put config (str index) value)
+            config)
+          ;; convert the pmap into jsonObject
+          (toConfig [pmap]
+            (reduce put (JsonObject.) pmap))
+            ]
+    (let [opts (DeploymentOptions.)]
+      (when instances (.setInstances opts (int instances)))
+      (when worker (.setWorker opts worker))
+      (when config (.setConfig opts (toConfig config)))
+      opts)))
 
 (defn- opts->vertx-options
   [{:keys [threads on-error]}]
