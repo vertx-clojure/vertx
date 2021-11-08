@@ -165,7 +165,7 @@
 
 ;; request api for the webclient
 (defn request
-  "request:: WebClient -> ('GET|'POST|'PUT|'DELETE -> URL(String) ) | {:uri string :ssl bool :port int :method atom :host string} -> :form | :json | :buffer | :query -> Future"
+  "request:: WebClient -> ('GET|'POST|'PUT|'DELETE -> URL(String) ) | {:uri string :ssl bool :port int :method atom :host string :headers {} :custom (fn [HttpRequest])} -> (:form | :json | :buffer | :query -> Future)"
   ([cli method url]
    (request cli
             (let* [url-struct (URL. url)
