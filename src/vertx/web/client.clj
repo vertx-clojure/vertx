@@ -76,7 +76,7 @@
 (defn- to-request-option [opt]
   (let [option (RequestOptions.)]
     (.setHost option (:host opt))
-    (.setPort option (.intValue (:port opt)))
+    (.setPort option (int (:port opt)))
     (.setSsl  option (:ssl opt))
     (.setURI  option (or (:uri opt) "/"))
     (when (:timeout opt)
@@ -86,7 +86,9 @@
     ;; add headers
     (when (:headers opt)
       (reduce (fn [_ [name value]]
-                (.putHeader option (str name) (str value)) )
+                (if (or (symbol? name) (keyword? name))
+                (.putHeader option (.substring (str name) 1) (str value))
+                (.putHeader option (str name) (str value)) ))
               {}
               (:headers opt) ))
     (when (:proxy opt)
@@ -130,7 +132,10 @@
 
     ;; if map, it should convert into a JsonObject and add other into it
     (map? data)    (reduce (fn [js [x y]]
-                             (.put js (.substring (str x) 1) (toJson y))
+                             (if (or (symbol? x) (keyword? x))
+                               (.put js (.substring (str x) 1) (toJson y))
+                               (.put js (str x) (toJson y))
+                               )
                              js)
                            (JsonObject.)
                            data)
@@ -159,7 +164,11 @@
 (defn- toQuery
   "use immutable-map as request query"
   [req header-map]
-  (reduce (fn [_ [i v]] (.addQueryParam req (str i) (str v))) {} header-map)
+  (reduce (fn [_ [i v]] (.addQueryParam req
+                                        (if (or (symbol? i) (keyword? i))
+                                          (.substring (str i) 1)
+                                          (str i))
+                                        (str v))) {} header-map)
   ;; must return the req
   req)
 
