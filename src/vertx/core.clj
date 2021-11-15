@@ -111,21 +111,25 @@
 
 (s/def :vertx.core$actor/on-message fn?)
 (s/def ::actor-options
-  (s/keys :req-un [:vertx.core$actor/on-message]
+  (s/keys ;;:req-un [:vertx.core$actor/on-message] ;; no need for on-message now
           :opt-un [:vertx.core$verticle/on-start
                    :vertx.core$verticle/on-error
                    :vertx.core$verticle/on-stop]))
+;; actor -> {"addr" (fn [event ctx])} -> {:on-start fn :on-stop fn :on-error fn} -> verticle
 
 (defn actor
   "A shortcut for create a verticle instance (factory) that consumes a
-  specific topic."
-  [topic options]
-  (s/assert string? topic)
+  specific topic.
+  actor -> topics : {\"addr\" (fn [event actor-ctx])} -> options : {:on-start fn :on-stop fn :on-error fn} -> verticle.
+  :on-start should return actor-state, or it should be {}"
+  [topics options]
+  ;; require a list or vector
+  (assert (or (vector? topics) (list? topics) (map? topics)))
   (s/assert ::actor-options options)
   (reify
     IVerticleFactory
     Supplier
-    (get [_] (build-actor topic options))))
+    (get [_] (build-actor topics options))))
 
 (s/def :vertx.core$deploy/instances pos?)
 (s/def :vertx.core$deploy/worker boolean?)
@@ -192,16 +196,67 @@
                          (.fail o err))
                      (.complete o))))))))
 
+(defn- merge-and-reply [ctx event data]
+  ;; sync the context first, because the actor may send event to self
+  (let [state (.get ctx "state")]
+    (cond
+      (:none data) nil
+      (:merge data) (.put ctx "state" (merge (:merge data) state))
+      (:rm data) (let [rm (:rm data)
+                       next_state (reduce dissoc state
+                                          (if (or (list? rm) (vector? rm))
+                                            rm
+                                            [rm]) )]
+                   (.put ctx "state" next_state)
+                   )
+      ))
+  ;; send the response
+  (when (:reply data)
+    (.reply event
+            (io.vertx.core.json.Json/encode data))
+    )
+  )
+
 (defn- build-actor
-  [topic {:keys [on-message on-error on-stop on-start]
-          :or {on-error (constantly nil)
-               on-start (constantly {})
-               on-stop (constantly nil)}}]
+  [topics {:keys [on-error on-stop on-start]
+           :or {on-error (constantly nil)
+                on-start (constantly {})
+                on-stop (constantly nil)}}]
   (letfn [(-on-start [ctx]
             (let [state (on-start ctx)
                   state (if (map? state) state {})
-                  consumer (vxe/consumer ctx topic on-message)]
-              (assoc state ::consumer consumer)))]
+                  vertx (vu/resolve-system ctx)
+                  bus   (.eventBus vertx)
+                  ;; FIXME use a better code style
+                  listen (fn [state [addr handler]]
+                           ;; listen the event instead of the eventbus because the origin one will auto response
+                           (.consumer bus addr
+                                      (vu/fn->handler
+                                       (fn [event]
+                                         ;; handle the response
+                                         (merge-and-reply ctx event
+                                                          ;; the handler should receive two argument
+                                                          (handler {:headers (.headers event)
+                                                                    :body (.body event)
+                                                                    :address (.address event)
+                                                                    :reply (fn
+                                                                             ([data] (.reply event))
+                                                                             ([data opt] (.reply event data opt)))
+                                                                    :self event
+                                                                    }
+                                                                   (.get "state" ctx)
+                                                                   ))
+                                         )))
+                           ;; register the handler at ctx
+                           (assoc state addr handler)
+                           )
+                  ]
+              ;; set the state into context for further use
+              (let [state
+                    (reduce listen state topics)]
+                (.put ctx "state" state)
+                state
+                )))]
     (build-verticle {:on-error on-error
                      :on-stop on-stop
                      :on-start -on-start})))
