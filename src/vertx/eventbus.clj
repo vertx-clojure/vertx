@@ -14,8 +14,7 @@
            io.vertx.core.eventbus.MessageConsumer
            io.vertx.core.eventbus.DeliveryOptions
            io.vertx.core.eventbus.EventBus
-           io.vertx.core.eventbus.MessageCodec
-           java.util.function.Supplier))
+           io.vertx.core.eventbus.MessageCodec))
 
 (declare opts->delivery-opts)
 (declare resolve-eventbus)
@@ -25,10 +24,10 @@
 ;; --- Public Api
 
 (defn consumer
-  [vsm topic f]
   "f :: Vertx -> Msg -> ReplyMsg, and it will resume the msg handler"
+  [vsm topic f]
   (let [^EventBus bus (resolve-eventbus vsm)
-        ^MessageConsumer consumer (.consumer bus ^String topic)]
+        ^MessageConsumer consumer (.consumer bus ^String (str topic))]
     (.handler consumer (reify Handler
                          (handle [_ msg]
                            (.pause consumer)
@@ -45,7 +44,7 @@
    (let [bus (resolve-eventbus vsm)
          opts (opts->delivery-opts opts)]
      (.publish ^EventBus bus
-               ^String topic
+               ^String (str topic)
                ^Object msg
                ^DeliveryOptions opts)
      nil)))
@@ -56,7 +55,7 @@
    (let [bus (resolve-eventbus vsm)
          opts (opts->delivery-opts opts)]
      (.send ^EventBus bus
-            ^String topic
+            ^String (str topic)
             ^Object msg
             ^DeliveryOptions opts)
      nil)))
@@ -68,7 +67,7 @@
          opts (opts->delivery-opts opts)
          d (p/deferred)]
      (.request ^EventBus bus
-               ^String topic
+               ^String (str topic)
                ^Object msg
                ^DeliveryOptions opts
                ^Handler (vu/deferred->handler d))

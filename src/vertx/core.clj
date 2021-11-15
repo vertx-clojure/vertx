@@ -200,22 +200,18 @@
   ;; sync the context first, because the actor may send event to self
   (let [state (.get ctx "state")]
     (cond
-      (:none data) nil
-      (:merge data) (.put ctx "state" (merge (:merge data) state))
+      (:merge data) (.put ctx "state" (merge state (:merge data)))
       (:rm data) (let [rm (:rm data)
                        next_state (reduce dissoc state
                                           (if (or (list? rm) (vector? rm))
                                             rm
-                                            [rm]) )]
-                   (.put ctx "state" next_state)
-                   )
-      ))
-  ;; send the response
+                                            [rm]))]
+                   (.put ctx "state" next_state))))
+
+;; send the response
   (when (:reply data)
     (.reply event
-            (io.vertx.core.json.Json/encode data))
-    )
-  )
+            (io.vertx.core.json.Json/encode data))))
 
 (defn- build-actor
   [topics {:keys [on-error on-stop on-start]
@@ -224,39 +220,42 @@
                 on-stop (constantly nil)}}]
   (letfn [(-on-start [ctx]
             (let [state (on-start ctx)
-                  state (if (map? state) state {})
+                  state (if (nil? state) {} state)
+                  ;; TODO extract into defn as (listen-on-topic ctx topics)
                   vertx (vu/resolve-system ctx)
                   bus   (.eventBus vertx)
+                  ctx   (.getContext vertx)
                   ;; FIXME use a better code style
                   listen (fn [state [addr handler]]
                            ;; listen the event instead of the eventbus because the origin one will auto response
-                           (.consumer bus addr
+                           (.consumer bus (str addr)
                                       (vu/fn->handler
                                        (fn [event]
+                                         ;; TODO use promise to complete this so that actor can pass this event into other situation
                                          ;; handle the response
                                          (merge-and-reply ctx event
                                                           ;; the handler should receive two argument
+                                                          ;; TODO extract msg as (build-msg event)
                                                           (handler {:headers (.headers event)
                                                                     :body (.body event)
                                                                     :address (.address event)
                                                                     :reply (fn
-                                                                             ([data] (.reply event))
+                                                                             ([data] (.reply event data))
                                                                              ([data opt] (.reply event data opt)))
                                                                     :self event
                                                                     }
-                                                                   (.get "state" ctx)
+                                                                   (.get ctx "state")
                                                                    ))
                                          )))
                            ;; register the handler at ctx
                            (assoc state addr handler)
                            )
+                  ;; register the handler
+                  state                     (reduce listen state topics)
                   ]
+              (.put ctx "state" state)
+            state))]
               ;; set the state into context for further use
-              (let [state
-                    (reduce listen state topics)]
-                (.put ctx "state" state)
-                state
-                )))]
     (build-verticle {:on-error on-error
                      :on-stop on-stop
                      :on-start -on-start})))
