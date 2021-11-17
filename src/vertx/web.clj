@@ -253,7 +253,7 @@
             multi-map)
 
     {}) )
-
+(declare add-route)
 (defn- register-route'
   [router' {:keys [name order blocking regex uri method routes router handler respond custom] :as config}]
   (let [^Route r (.route router')]
