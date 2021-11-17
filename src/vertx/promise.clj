@@ -4,7 +4,7 @@
 
 ;; to provide a clj-style promise
 
-(defn deref
+(defn deferred
   "create a empty promise for further use"
   []
   (Promise/promise))
@@ -137,3 +137,11 @@
   (catch Exception e (failed e)))))
 
 (def chain compose)
+
+(defn ->completeStage
+  [fu]
+  (.toCompletionStage fu))
+
+(defn fromCompleteStage
+  [stage]
+  (Future/fromCompletionStage stage))

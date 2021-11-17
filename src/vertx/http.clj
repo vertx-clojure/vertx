@@ -71,14 +71,21 @@
 
 (defn server
   "Starts a vertx http server."
-  [vsm {:keys [handler] :as options}]
+  [vsm {:keys [handler error websocket close] :as options}]
   (s/assert ::server-options options)
   (let [^Vertx vsm (vu/resolve-system vsm)
         ^HttpServerOptions opts (opts->http-server-options options)
         ^HttpServer srv (.createHttpServer vsm opts)
-        ^Handler handler (resolve-handler handler)]
+        ^Handler handler (resolve-handler handler)
+        error (if error error (vu/fn->handler (fn [e] (println e))))
+        websocket (if websocket websocket (vu/fn->handler (fn[_] )))
+        close (if close close (vu/fn->handler (fn[_])))
+        ]
     (doto srv
       (.requestHandler handler)
+      (.exceptionHandler error)
+      (.webSocketHandler websocket)
+      (.close close)
       (.listen))
     srv))
 

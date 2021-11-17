@@ -7,53 +7,56 @@
 (ns vertx.web
   "High level api for http servers."
   (:require
-   [clojure.tools.logging :as log]
-   [clojure.spec.alpha :as s]
-   [promesa.core :as p]
-   [sieppari.core :as sp]
-   [reitit.core :as rt]
-   [vertx.http :as vh]
-   [vertx.util :as vu])
+    [clojure.tools.logging :as log]
+    [clojure.spec.alpha :as s]
+    [promesa.core :as p]
+    [sieppari.core :as sp]
+    [reitit.core :as rt]
+    [vertx.http :as vh]
+    [vertx.util :as vu])
   (:import
-   clojure.lang.IPersistentMap
-   clojure.lang.Keyword
-   io.vertx.core.Future
-   io.vertx.core.Handler
-   io.vertx.core.Vertx
-   io.vertx.core.buffer.Buffer
-   io.vertx.core.http.Cookie
-   io.vertx.core.http.HttpServer
-   io.vertx.core.http.HttpServerOptions
-   io.vertx.core.http.HttpServerRequest
-   io.vertx.core.http.HttpServerResponse
-   io.vertx.core.http.ServerWebSocket
-   io.vertx.ext.web.Route
-   io.vertx.ext.web.Router
-   io.vertx.ext.web.RoutingContext
-   io.vertx.ext.web.handler.BodyHandler
-   io.vertx.ext.web.handler.LoggerHandler
-   io.vertx.ext.web.handler.ResponseTimeHandler
-   io.vertx.ext.web.handler.StaticHandler))
+    clojure.lang.IPersistentMap
+    clojure.lang.Keyword
+    io.vertx.core.Future
+    io.vertx.core.Handler
+    io.vertx.core.Vertx
+    io.vertx.core.buffer.Buffer
+    io.vertx.core.http.Cookie
+    io.vertx.core.http.HttpMethod
+    io.vertx.core.http.HttpServer
+    io.vertx.core.http.HttpServerOptions
+    io.vertx.core.http.HttpServerRequest
+    io.vertx.core.http.HttpServerResponse
+    io.vertx.core.http.ServerWebSocket
+    io.vertx.ext.web.Route
+    io.vertx.ext.web.Router
+    io.vertx.ext.web.RoutingContext
+    io.vertx.ext.web.handler.BodyHandler
+    io.vertx.ext.web.handler.LoggerHandler
+    io.vertx.ext.web.handler.ResponseTimeHandler
+    io.vertx.ext.web.handler.StaticHandler))
 
 ;; --- Public Api
 
 (s/def ::wrap-handler
-  (s/or :fn fn?
-        :vec (s/every fn? :kind vector?)))
+       (s/or :fn  fn?
+             :vec (s/every fn? :kind vector?)))
 
 (defn- ->request
   [^RoutingContext routing-context]
-  (let [^HttpServerRequest request (.request ^RoutingContext routing-context)
+  (let [^HttpServerRequest request   (.request ^RoutingContext routing-context)
         ^HttpServerResponse response (.response ^RoutingContext routing-context)
-        ^Vertx system (.vertx routing-context)]
-    {:body (.getBody routing-context)
-     :path (.path request)
-     :headers (vh/->headers (.headers request))
-     :method (-> request .method .name)
-     ::vh/request request
-     ::vh/response response
-     ::execution-context (.getContext system)
-     ::routing-context routing-context}))
+        ^Vertx system                (.vertx routing-context)]
+    {:body               (.getBody routing-context)
+     :path               (.path request)
+     :param              (.params request)
+     :query              (.query request)
+     :headers            (vh/->headers (.headers request))
+     :method             (-> request .method .name)
+     :request            request
+     :response           response
+     :vertx-context      (.getContext system)
+     :routing-context    routing-context}))
 
 (defn handler
   "Wraps a user defined funcion based handler into a vertx-web aware
@@ -62,7 +65,7 @@
   If the handler is a vector, the sieppari intercerptos engine will be used
   to resolve the execution of the interceptors + handler."
   [vsm & handlers]
-  (let [^Vertx vsm (vu/resolve-system vsm)
+  (let [^Vertx vsm     (vu/resolve-system vsm)
         ^Router router (Router/router vsm)]
     (reduce #(%2 %1) router handlers)))
 
@@ -70,10 +73,10 @@
   ([path] (assets path {}))
   ([path {:keys [root] :or {root "public"} :as options}]
    (fn [^Router router]
-     (let [^Route route (.route router path)
+     (let [^Route route     (.route router path)
            ^Handler handler (doto (StaticHandler/create)
-                              (.setWebRoot root)
-                              (.setDirectoryListing true))]
+                                  (.setWebRoot root)
+                                  (.setDirectoryListing true))]
        (.handler route handler)
        router))))
 
@@ -87,7 +90,7 @@
   [err req]
   (log/error err)
   {:status 500
-   :body "Internal server error!\n"})
+   :body   "Internal server error!\n"})
 
 (defn- run-chain
   [ctx chain handler]
@@ -98,59 +101,230 @@
 (defn- router-handler
   [router {:keys [path method] :as ctx}]
   (let [{:keys [data path-params] :as match} (rt/match-by-path router path)
-        handler-fn (or (get data method)
-                       (get data :all)
-                       default-handler)
-        interceptors (get data :interceptors)
-        ctx (assoc ctx ::match match :path-params path-params)]
+        handler-fn                           (or (get data method)
+                                                 (get data :all)
+                                                 default-handler)
+        interceptors                         (get data :interceptors)
+        ctx                                  (assoc ctx ::match match :path-params path-params)]
     (if (empty? interceptors)
       (handler-fn ctx)
       (run-chain ctx interceptors handler-fn))))
 
 (defn router
   ([routes] (router routes {}))
-  ([routes {:keys [delete-uploads?
-                   upload-dir
-                   on-error
-                   log-requests?
-                   time-response?]
-            :or {delete-uploads? true
-                 upload-dir "/tmp/vertx.uploads"
-                 on-error default-on-error
-                 log-requests? false
-                 time-response? true}
-            :as options}]
+  ([routes
+    {:keys [delete-uploads?
+            upload-dir
+            on-error
+            log-requests?
+            time-response?]
+     :or   {delete-uploads? true
+            upload-dir      "/tmp/vertx.uploads"
+            on-error        default-on-error
+            log-requests?   false
+            time-response?  true}
+     :as   options}]
    (let [rtr (rt/router routes options)
-         f #(router-handler rtr %)]
+         f   #(router-handler rtr %)]
      (fn [^Router router]
        (let [^Route route (.route router)]
          (when time-response? (.handler route (ResponseTimeHandler/create)))
          (when log-requests? (.handler route (LoggerHandler/create)))
 
          (doto route
-           (.failureHandler
-            (reify Handler
-              (handle [_ rc]
-                (let [err (.failure ^RoutingContext rc)
-                      req (.get ^RoutingContext rc "vertx$clj$req")]
-                  (-> (p/do! (on-error err req))
-                      (vh/-handle-response req))))))
+               (.failureHandler
+                 (reify
+                  Handler
+                  (handle [_ rc]
+                          (let [err (.failure ^RoutingContext rc)
+                                req (.get ^RoutingContext rc "vertx$clj$req")]
+                            (-> (p/do! (on-error err req))
+                                (vh/-handle-response req))))))
 
-           (.handler
-            (doto (BodyHandler/create true)
-              (.setDeleteUploadedFilesOnEnd delete-uploads?)
-              (.setUploadsDirectory upload-dir)))
+               (.handler
+                 (doto (BodyHandler/create true)
+                       (.setDeleteUploadedFilesOnEnd delete-uploads?)
+                       (.setUploadsDirectory upload-dir)))
 
-           (.handler
-            (reify Handler
-              (handle [_ rc]
-                (let [req (->request rc)
-                      efn (fn [err]
-                            (.put ^RoutingContext rc "vertx$clj$req" req)
-                            (.fail ^RoutingContext rc err))]
-                  (try
-                    (-> (vh/-handle-response (f req) req)
-                        (p/catch' efn))
-                    (catch Exception err
-                      (efn err)))))))))
-         router))))
+               (.handler
+                 (reify
+                  Handler
+                  (handle [_ rc]
+                          (let [req (->request rc)
+                                efn (fn [err]
+                                      (.put ^RoutingContext rc "vertx$clj$req" req)
+                                      (.fail ^RoutingContext rc err))]
+                            (try
+                              (-> (vh/-handle-response (f req) req)
+                                  (p/catch' efn))
+                              (catch Exception err
+                                (efn err)))))))))
+       router))))
+
+(defn headers
+  "take the header"
+  [route-context]
+  (:headers (->request route-context)))
+
+(defn server-request
+  "exctract vert.x server request for custom use"
+  [^io.vertx.ext.web.RoutingContext route-context]
+  (.request route-context))
+
+(defn path
+  "take the path of request"
+  [^io.vertx.ext.web.RoutingContext route-context]
+  (:path (->request route-context)))
+
+(defn query
+  "take the query of request"
+  [route-context]
+  (:query (->request route-context)))
+
+(defn ->multi-map
+  "convert the clojure persistent map into MultiMap"
+  [map_]
+  (let [multi-map (io.vertx.core.MultiMap/caseInsensitiveMultiMap)]
+    (reduce
+     (fn [m [k v]]
+       (.add m
+             (if (or (symbol? k) (keyword? k))
+               (.substring ^java.lang.String (str k) 1)
+               (str k))
+             v))
+     multi-map
+     map_)
+    multi-map))
+
+(defn- METHOD-MAP
+  [name]
+  (if (= name :ALL)
+    (HttpMethod/values)
+    (let [method  (.toUpperCase (.substring (str name) 1))]
+      (HttpMethod/valueOf method))))
+
+(defn- list'? [x]
+  (or (list? x) (vector? x)))
+
+(defn- build-register-route
+  "build the route register argument"
+  ([path handler] (build-register-route [:GET :POST :PUT :DELETE]
+                                        path
+                                        handler))
+  ([method path handler] (if (list'? handler)
+                           (build-register-route method path (reverse (rest (reverse handler))) (first (reverse handler)))
+                           (build-register-route method path [] handler)))
+  ([method path handler respond]
+   ;; actually build the all argument
+   (let [method (if (list'? method) method [method])
+         path (if (list'? path) path [path])]
+     {:method method
+      :uri path
+      :handler (if (list'? handler) handler [handler])
+      :respond respond}
+     ))
+  )
+
+(defn ->map [multi-map]
+  "dangeroups api that may cost all memory"
+  (if multi-map
+    (reduce (fn [m [k i]]
+              (.put m (keyword k) i)
+              m)
+            (new java.util.HashMap)
+            multi-map)
+
+    {}) )
+
+(defn- register-route
+  "register the route with argument, see the source for further detail"
+  [^Router router' list-or-map]
+  (if (or (vector? list-or-map) (list? list-or-map))
+    ;; if is list build it into map and recur invoke
+    (register-route router' (apply build-register-route list-or-map))
+    (if-let [{:keys [blocking regex uri method router handler respond custom]} list-or-map]
+      (let [^Route r (.route router')]
+        ;; set the path first
+        (reduce (fn [_ uri]
+                  (if regex
+                    (.pathRegex r uri)
+                    (.path r uri))
+                  ) r uri)
+
+        ;; set the sub-router
+        (when router
+          (reduce
+           (fn [_ sub-route]
+             (.subRouter r sub-route))
+           r
+           router))
+
+        ;; set the method
+        (if method
+          ;; set all method
+          (reduce
+           (fn [_ name]
+             (.method r (METHOD-MAP name)))
+           r method)
+          (.method r io.vertx.core.http.HttpMethod/GET))
+
+        ;; add handler for the further use
+        (when handler
+          (reduce
+           (fn [_ f]
+             (let [f (fn [ctx]
+                       (let [request (->request ctx)]
+                         (f request )))
+                   fun (vu/fn->handler f)]
+               (if blocking
+                 (.blockingHandler r fun)
+                 (.handler r fun))))
+           r
+           handler
+          ))
+
+        ;; set the respond
+        (when respond
+          (.respond r (reify
+                        java.util.function.Function
+                        (apply [_ t]
+                          (let [request (->request t)]
+                          (respond request ))))))
+
+        ;; custom the route if neccesary
+        (when custom
+          (custom r))
+        ;; return the router for reduce use
+        router')
+      (throw (new RuntimeException "unknown route build argument")) )
+    )
+  )
+
+(defn add-route
+  "add route, a little pheonix-like api.
+  accept a list [[METHOD \"path\" HANDLER]], HANDLER -> context -> param -> Future
+  this is handle by multi Route dealer that will accept like [METHOD:Keyword PATH:String HANDLER:Fn] and each of it could be list like [[METHOD]:[Keybord] [PATH]:[String] [HANDLER]:Fn]. WARN: when HANDLER is LIST, only the last one should return Future others it just handle the context
+  args could be the Map {:uri path:String :blocking true :regex true :router [sub-route] :handler [Fn] :respond Fn}, for example (add-route router {:uri [\"/api/request\"] :method [:GET] :router [sub-router] :blocking false :handler [JsonContextHandler] :respond response-to-api :custom custom-Fn}), custom-Fn should be able to deal with route"
+  [router route-list]
+  (reduce register-route
+          router
+          route-list))
+
+(defn build-route
+  "create a Fn for vertx.web/handle use, deps on add-route"
+  [route-config]
+  (fn [router]
+    (add-route router route-config)))
+
+(defn error-handler
+  "create an error-handler, invoke like (error-handler status, (fn [error routing-context] ...)"
+  [status error-handle]
+  (fn [router]
+    (.errorHandler router status
+                   (vu/fn->handler (fn [routing-context]
+                                     (error-handle
+                                      (.failure routing-context)
+                                      routing-context)
+                                     ))
+                   )
+    ))

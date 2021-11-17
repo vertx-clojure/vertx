@@ -8,7 +8,8 @@
   (:require [clojure.spec.alpha :as s]
             [promesa.core :as p]
             [vertx.eventbus :as vxe]
-            [vertx.util :as vu])
+            [vertx.util :as vu]
+            [vertx.promise :as vp])
   (:import
    io.vertx.core.Context
    io.vertx.core.DeploymentOptions
@@ -239,17 +240,18 @@
                     ;; TODO use promise to complete this so that actor can pass this event into other situation
                     ;; handle the response
                     (let [s  (p/deferred)
-                          e  (p/catch s (fn [e] (.fail event -1 (.getMessage e))))
-                          c  (p/then e (fn [res] (merge-and-reply ctx event res) ))
+                          e  (p/error s (fn [e] (.fail event -1 (str e))))
+                          c  (p/then s (fn [res] (merge-and-reply ctx event res) ))
                           ]
                       (try
                         (handler (convert-event event) (.get ctx "state")
                                  ;; use lambda to complete promise
-                                 (fn [res] (p/resolve! c res))
-                                 (fn [e] (p/reject! c e))
+                                 (fn [res]
+                                   (p/resolve! s res))
+                                 (fn [e] (p/reject! s e))
                                  )
                         (catch Exception e
-                          (p/reject! c e))
+                          (p/reject! s e))
                         ) ))))
       ;; register the handler at ctx
       (if (map? state)
