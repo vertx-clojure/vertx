@@ -56,6 +56,9 @@
      :request            request
      :response           response
      :vertx-context      (.getContext system)
+     :next               (fn [] (.next routing-context))
+     :fail               (fn ([e] (.fail routing-context e))
+                           ([status e] (.fail routing-context (int status) e)))
      :routing-context    routing-context}))
 
 (defn handler
@@ -110,6 +113,17 @@
       (handler-fn ctx)
       (run-chain ctx interceptors handler-fn))))
 
+(def ROUTE-MAP
+  "ROUTE MAP that will record all the route created router, if you manually controll route do rec ord yourself, please notice this may produce OOM, it won't delete automaticly"
+  ;; for debug and some special use
+  ;; TODO make it better
+  (java.util.concurrent.ConcurrentHashMap.))
+
+(def ROUTER-LIST
+  "ROUTER-LIST that will record all the router created router, if you manually controll route do rec ord yourself, please notice this may produce OOM, it won't delete automaticly"
+  (java.util.concurrent.ConcurrentLinkedQueue.))
+
+
 (defn router
   ([routes] (router routes {}))
   ([routes
@@ -128,6 +142,9 @@
          f   #(router-handler rtr %)]
      (fn [^Router router]
        (let [^Route route (.route router)]
+         (.add ROUTER-LIST router)
+         (.add (.putIfAbsend ROUTE-MAP router (java.util.concurrent.BlockingQueue))
+               route)
          (when time-response? (.handler route (ResponseTimeHandler/create)))
          (when log-requests? (.handler route (LoggerHandler/create)))
 
@@ -217,10 +234,11 @@
   ([method path handler respond]
    ;; actually build the all argument
    (let [method (if (list'? method) method [method])
-         path (if (list'? path) path [path])]
+         path (if (list'? path) path [path])
+         handler (if (list'? handler) handler [handler])]
      {:method method
       :uri path
-      :handler (if (list'? handler) handler [handler])
+      :handler handler
       :respond respond}
      ))
   )
@@ -236,75 +254,91 @@
 
     {}) )
 
+(defn- register-route'
+  [router' {:keys [name order blocking regex uri method routes router handler respond custom] :as config}]
+  (let [^Route r (.route router')]
+    (.add (.putIfAbsent ^java.util.concurrent.ConcurrentHashMap ROUTE-MAP
+                        router (java.util.concurrent.ConcurrentLinkedQueue))
+          r)
+    ;; set the path first
+    (println "Mount uri -> " uri " Handler -> " handler " Respond -> " respond)
+    (when uri
+      (reduce (fn [_ uri]
+                (if regex
+                  (.pathRegex r uri)
+                  (.path r uri))
+                ) r uri))
+
+    ;; set the sub-router
+    (when router
+      (reduce
+       (fn [_ sub-route] (.subRouter r sub-route))
+       r
+       router))
+
+    ;; set the method
+    (if method
+      ;; set all method
+      (reduce
+       (fn [_ name] (.method r (METHOD-MAP name)))
+       r method)
+      ;; else
+      (.method r io.vertx.core.http.HttpMethod/GET))
+
+    ;; add handler for the further use
+    (when handler
+      (reduce
+       (fn [_ f]
+         (let [f (fn [ctx]
+                   (let [request (->request ctx)]  (f request )))
+               fun (vu/fn->handler f)]
+           (if blocking
+             (.blockingHandler r fun)
+             (.handler r fun))))
+       r
+       handler
+       ))
+
+    ;; set the respond
+    (when respond
+      (.respond r (reify
+                    java.util.function.Function
+                    (apply [_ t]
+                      (let [request (->request t)
+                            res (respond request )]
+                        (if (instance? java.util.concurrent.CompletionStage res)
+                          (vertx.promise/fromCompleteStage res)
+                          res)
+                        )))))
+
+    ;; custom the route if neccesary
+    (when custom
+      (custom r))
+    ;; return the router for reduce use
+    (when name
+      (.name r))
+    (when order
+      (.order (int r)))
+    (if routes
+      (add-route router' routes)
+      router'))
+  )
+
 (defn- register-route
   "register the route with argument, see the source for further detail"
   [^Router router' list-or-map]
-  (if (or (vector? list-or-map) (list? list-or-map))
+  (println "arg -> " list-or-map " type -> " (type list-or-map))
+  (if (list'? list-or-map)
     ;; if is list build it into map and recur invoke
     (register-route router' (apply build-register-route list-or-map))
-    (if-let [{:keys [blocking regex uri method router handler respond custom]} list-or-map]
-      (let [^Route r (.route router')]
-        ;; set the path first
-        (reduce (fn [_ uri]
-                  (if regex
-                    (.pathRegex r uri)
-                    (.path r uri))
-                  ) r uri)
-
-        ;; set the sub-router
-        (when router
-          (reduce
-           (fn [_ sub-route]
-             (.subRouter r sub-route))
-           r
-           router))
-
-        ;; set the method
-        (if method
-          ;; set all method
-          (reduce
-           (fn [_ name]
-             (.method r (METHOD-MAP name)))
-           r method)
-          (.method r io.vertx.core.http.HttpMethod/GET))
-
-        ;; add handler for the further use
-        (when handler
-          (reduce
-           (fn [_ f]
-             (let [f (fn [ctx]
-                       (let [request (->request ctx)]
-                         (f request )))
-                   fun (vu/fn->handler f)]
-               (if blocking
-                 (.blockingHandler r fun)
-                 (.handler r fun))))
-           r
-           handler
-          ))
-
-        ;; set the respond
-        (when respond
-          (.respond r (reify
-                        java.util.function.Function
-                        (apply [_ t]
-                          (let [request (->request t)]
-                          (respond request ))))))
-
-        ;; custom the route if neccesary
-        (when custom
-          (custom r))
-        ;; return the router for reduce use
-        router')
-      (throw (new RuntimeException "unknown route build argument")) )
-    )
+    (register-route' router' list-or-map) )
   )
 
 (defn add-route
   "add route, a little pheonix-like api.
   accept a list [[METHOD \"path\" HANDLER]], HANDLER -> context -> param -> Future
   this is handle by multi Route dealer that will accept like [METHOD:Keyword PATH:String HANDLER:Fn] and each of it could be list like [[METHOD]:[Keybord] [PATH]:[String] [HANDLER]:Fn]. WARN: when HANDLER is LIST, only the last one should return Future others it just handle the context
-  args could be the Map {:uri path:String :blocking true :regex true :router [sub-route] :handler [Fn] :respond Fn}, for example (add-route router {:uri [\"/api/request\"] :method [:GET] :router [sub-router] :blocking false :handler [JsonContextHandler] :respond response-to-api :custom custom-Fn}), custom-Fn should be able to deal with route"
+  args could be the Map {:routes [[same as out-side]] :name \"route-name\" :order 1 :uri path:String :blocking true :regex true :router [sub-route] :handler [Fn] :respond Fn}, for example (add-route router {:uri [\"/api/request\"] :method [:GET] :router [sub-router] :blocking false :handler [JsonContextHandler] :respond response-to-api :custom custom-Fn}), custom-Fn should be able to deal with route"
   [router route-list]
   (reduce register-route
           router
