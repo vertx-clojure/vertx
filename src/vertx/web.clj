@@ -241,7 +241,13 @@
      {:method method
       :uri path
       :handler handler
-      :respond respond}
+      :respond respond
+      :options {:delete-uploads? true
+                :upload-dir      "/tmp/vertx.uploads"
+                :on-error        default-on-error
+                :log-requests?   false
+                :time-response?  true}
+      }
      ))
   )
 
@@ -255,16 +261,42 @@
             multi-map)
 
     {}) )
+
+;; prepare the function
 (declare add-route)
+
+(defn- set-default-handler
+  "set the body handler, the response-time handler, log-request handler, upload handler"
+  [route     {:keys [delete-uploads?
+                     upload-dir
+                     log-requests?
+                     time-response?]
+              :or   {delete-uploads? true
+                     upload-dir      "/tmp/vertx.uploads"
+                     log-requests?   false
+                     time-response?  true}
+              :as   options}]
+  (when time-response? (.handler route (ResponseTimeHandler/create)))
+  (when log-requests? (.handler route (LoggerHandler/create)))
+  (.handler route
+            (doto (BodyHandler/create true)
+              (.setDeleteUploadedFilesOnEnd delete-uploads?)
+              (.setUploadsDirectory upload-dir))
+  ))
+
+;; real action to register the route
 (defn- register-route'
-  [router' {:keys [name order blocking regex uri method routes router handler respond custom] :as config}]
+  [router' {:keys [name order blocking regex uri method routes router handler respond custom
+                   options ] :as config}]
   (let [^Route r (.route router')]
     (if (not (.get ROUTE-MAP router'))
       (.putIfAbsent ROUTE-MAP router' (java.util.concurrent.ConcurrentLinkedQueue.)))
     (.add (.get ROUTE-MAP router') r)
 
+    ;; set the default handler
+    (set-default-handler r options)
     ;; set the path first
-    (println "Mount uri -> " uri " Handler -> " handler " Respond -> " respond)
+    ;;(println "Mount uri -> " uri " Handler -> " handler " Respond -> " respond)
     (when uri
       (reduce (fn [_ uri]
                 (if regex
@@ -351,6 +383,7 @@
   "create a Fn for vertx.web/handle use, deps on add-route"
   [route-config]
   (fn [router]
+    ;; set the default handler for the router
     (add-route router route-config)))
 
 (defn error-handler

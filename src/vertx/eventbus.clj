@@ -98,8 +98,8 @@
   []
   ;; TODO: implement the wire encode/decode using transit+msgpack
   (reify MessageCodec
-    (encodeToWire [_ buffer data])
-    (decodeFromWire [_ pos buffer])
+    (encodeToWire [_ buffer data] (.appendString ^io.vertx.core.buffer.Buffer buffer (io.vertx.core.json.Json/encode data)))
+    (decodeFromWire [_ pos buffer] (io.vertx.core.json.Json/decodeValue buffer))
     (transform [_ data] data)
     (name [_] "clj:msgpack")
     (^byte systemCodecID [_] (byte -1))))
