@@ -143,7 +143,9 @@
      (fn [^Router router]
        (let [^Route route (.route router)]
          (.add ROUTER-LIST router)
-         (.add (.putIfAbsend ROUTE-MAP router (java.util.concurrent.BlockingQueue))
+         (if (not (.get ROUTE-MAP router))
+           (.putIfAbsent ROUTE-MAP router (java.util.concurrent.ConcurrentLinkedQueue.)) )
+         (.add (.get ROUTE-MAP router)
                route)
          (when time-response? (.handler route (ResponseTimeHandler/create)))
          (when log-requests? (.handler route (LoggerHandler/create)))
@@ -257,9 +259,10 @@
 (defn- register-route'
   [router' {:keys [name order blocking regex uri method routes router handler respond custom] :as config}]
   (let [^Route r (.route router')]
-    (.add (.putIfAbsent ^java.util.concurrent.ConcurrentHashMap ROUTE-MAP
-                        router (java.util.concurrent.ConcurrentLinkedQueue))
-          r)
+    (if (not (.get ROUTE-MAP router'))
+      (.putIfAbsent ROUTE-MAP router' (java.util.concurrent.ConcurrentLinkedQueue.)))
+    (.add (.get ROUTE-MAP router') r)
+
     ;; set the path first
     (println "Mount uri -> " uri " Handler -> " handler " Respond -> " respond)
     (when uri
@@ -354,11 +357,12 @@
   "create an error-handler, invoke like (error-handler status, (fn [error routing-context] ...)"
   [status error-handle]
   (fn [router]
-    (.errorHandler router status
+    (.errorHandler ^Router router (int status)
                    (vu/fn->handler (fn [routing-context]
                                      (error-handle
                                       (.failure routing-context)
                                       routing-context)
                                      ))
                    )
+    router
     ))
