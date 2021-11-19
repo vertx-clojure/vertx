@@ -364,7 +364,7 @@
     ;; set the default handler for the router
     (add-route router route-config)))
 
-(defn error-handler
+(defn handle-error
   "create an error-handler, invoke like (error-handler status, (fn [error routing-context] ...)"
   [status error-handle]
   (fn [router]

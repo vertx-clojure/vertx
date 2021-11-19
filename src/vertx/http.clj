@@ -77,7 +77,7 @@
         ^HttpServerOptions opts (opts->http-server-options options)
         ^HttpServer srv (.createHttpServer vsm opts)
         ^Handler handler (resolve-handler handler)
-        error (if error error (vu/fn->handler (fn [e] (println e))))
+        error (if error error (vu/fn->handler (fn [e] (println "error: " e))))
         websocket (if websocket websocket (vu/fn->handler (fn[_] )))
         close (if close close (vu/fn->handler (fn[_])))
         ]
@@ -85,8 +85,12 @@
       (.requestHandler handler)
       (.exceptionHandler error)
       (.webSocketHandler websocket)
-      (.close close)
-      (.listen))
+      (.close close))
+    (-> (.listen srv)
+        (.onFailure error)
+        (.onSuccess (vu/fn->handler (fn [server]
+                      (println "Http Service[" (.actualPort srv) "] started"))))
+        )
     srv))
 
 ;; --- Impl

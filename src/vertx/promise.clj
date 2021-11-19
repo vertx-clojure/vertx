@@ -42,7 +42,7 @@
   [error]
   (Future/failedFuture error))
 
-(defn future
+(defn from
   "(future (fn [p] (resolve p true))) let fn decide create future"
   [fn-promise]
   (Future/future (reify
@@ -139,14 +139,14 @@
 
 (def chain compose)
 
-(def fmap
+(defn fmap
   "fmap, execute the f if the future is success"
   [fu f]
   (compose fu
            (fn [x]
              (resolved (f x)) )))
 
-(def recover
+(defn recover
   "recover, recover the failed future into a good one"
   [fu r]
   (compose fu resolved (fn [e]
