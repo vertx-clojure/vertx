@@ -120,6 +120,7 @@
 
 (defn compose
   "handle data or error and convert into new future.
+   the fn should return future
   (compose future fn-succeeded)
   (compose future fn-succeeded fn-failed)"
   ([fu f-succes] (compose fu f-succes failed))
@@ -137,6 +138,20 @@
   (catch Exception e (failed e)))))
 
 (def chain compose)
+
+(def fmap
+  "fmap, execute the f if the future is success"
+  [fu f]
+  (compose fu
+           (fn [x]
+             (resolved (f x)) )))
+
+(def recover
+  "recover, recover the failed future into a good one"
+  [fu r]
+  (compose fu resolved (fn [e]
+                         (resolved (r e))))
+  )
 
 (defn ->completeStage
   [fu]
