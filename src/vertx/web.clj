@@ -113,17 +113,6 @@
       (handler-fn ctx)
       (run-chain ctx interceptors handler-fn))))
 
-(def ROUTE-MAP
-  "ROUTE MAP that will record all the route created router, if you manually controll route do rec ord yourself, please notice this may produce OOM, it won't delete automaticly"
-  ;; for debug and some special use
-  ;; TODO make it better
-  (java.util.concurrent.ConcurrentHashMap.))
-
-(def ROUTER-LIST
-  "ROUTER-LIST that will record all the router created router, if you manually controll route do rec ord yourself, please notice this may produce OOM, it won't delete automaticly"
-  (java.util.concurrent.ConcurrentLinkedQueue.))
-
-
 (defn router
   ([routes] (router routes {}))
   ([routes
@@ -142,11 +131,6 @@
          f   #(router-handler rtr %)]
      (fn [^Router router]
        (let [^Route route (.route router)]
-         (.add ROUTER-LIST router)
-         (if (not (.get ROUTE-MAP router))
-           (.putIfAbsent ROUTE-MAP router (java.util.concurrent.ConcurrentLinkedQueue.)) )
-         (.add (.get ROUTE-MAP router)
-               route)
          (when time-response? (.handler route (ResponseTimeHandler/create)))
          (when log-requests? (.handler route (LoggerHandler/create)))
 
@@ -289,10 +273,6 @@
   [router' {:keys [name order blocking regex uri method routes router handler respond custom
                    options ] :as config}]
   (let [^Route r (.route router')]
-    (if (not (.get ROUTE-MAP router'))
-      (.putIfAbsent ROUTE-MAP router' (java.util.concurrent.ConcurrentLinkedQueue.)))
-    (.add (.get ROUTE-MAP router') r)
-
     ;; set the default handler
     (set-default-handler r options)
     ;; set the path first
