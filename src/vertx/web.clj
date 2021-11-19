@@ -276,7 +276,6 @@
     ;; set the default handler
     (set-default-handler r options)
     ;; set the path first
-    ;;(println "Mount uri -> " uri " Handler -> " handler " Respond -> " respond)
     (when uri
       (reduce (fn [_ uri]
                 (if regex
@@ -342,7 +341,6 @@
 (defn- register-route
   "register the route with argument, see the source for further detail"
   [^Router router' list-or-map]
-  (println "arg -> " list-or-map " type -> " (type list-or-map))
   (if (list'? list-or-map)
     ;; if is list build it into map and recur invoke
     (register-route router' (apply build-register-route list-or-map))
