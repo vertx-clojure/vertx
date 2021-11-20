@@ -50,8 +50,14 @@
      vsm)))
 
 (defn get-or-create-context
+  "create context for further use, see the vert.x Context"
   [vsm]
   (.getOrCreateContext ^Vertx (vu/resolve-system vsm)))
+
+(defn current-system
+  "return the current vertx"
+  []
+  (vu/resolve-system (Vertx/currentContext)))
 
 (defn current-context
   []
@@ -197,11 +203,18 @@
                          (.fail o err))
                      (.complete o))))))))
 
-(defn- merge-and-reply [ctx event data]
+(defn- merge-and-reply
+  "handle the return of event-handle, accept {:merge {index value} :rm [:index] :compute (fn [ctx] new_ctx) :reply data-for-response}. API-WARM STM is better choice of replacing compute"
+  [ctx event data]
   ;; sync the context first, because the actor may send event to self
   (let [state (.get ctx "state")]
     (cond
+      ;; compute the data, it will invoke with ctx and set merge it into ctx, because the event maybe handle by the other worker thread but wana use a atomic run.
+      (:compute data) (let [new_ctx ((:compute data) state)]
+                        (.put ctx "state" (merge state new_ctx)))
+      ;; merge the data into context
       (:merge data) (.put ctx "state" (merge state (:merge data)))
+      ;; rm the data
       (:rm data) (let [rm (:rm data)
                        next_state (reduce dissoc state
                                           (if (or (list? rm) (vector? rm))
@@ -214,10 +227,11 @@
     (.reply event
             (io.vertx.core.json.Json/encode data))))
 
-(defn- build-listen-on-topics [ctx topics]
-  "return a fn that is used as reduce to listen on topic and handle event"
-  (let [
-        vertx (vu/resolve-system ctx)
+(defn- build-listen-on-topics
+  "return a fn that is used as reduce to listen on topic and handle event.
+  event -> {:headers :body :address :reply(fn [data]) :self(io.vertx.core.Event)}"
+  [ctx topics]
+  (let [vertx (vu/resolve-system ctx)
         bus   (.eventBus vertx)
         ctx   (.getContext vertx)
         convert-event (fn [event]
@@ -227,36 +241,31 @@
                          :reply (fn
                                   ([data] (.reply event data))
                                   ([data opt] (.reply event data opt)))
-                         :self event
-                         }
-                        )
-        ]
-    ;; this state is not to be used at event
+                         :self event})]
+
+;; this state is not to be used at event
     (fn [state [addr handler]]
       ;; listen the event instead of the eventbus because the origin one will auto response
       (.consumer bus (str addr)
                  (vu/fn->handler
                   (fn [event]
-                    ;; TODO use promise to complete this so that actor can pass this event into other situation
-                    ;; handle the response
+                    ;; handle the response, use the promise to handle response
+                    ;; provice the resolve!/reject! to handle the result so that you can return at another thread(working-thread) and make a fast reply.
                     (let [s  (p/deferred)
                           e  (p/error s (fn [e] (.fail event -1 (str e))))
-                          c  (p/then s (fn [res] (merge-and-reply ctx event res) ))
-                          ]
+                          c  (p/then s (fn [res] (merge-and-reply ctx event res)))]
                       (try
                         (handler (convert-event event) (.get ctx "state")
                                  ;; use lambda to complete promise
                                  (fn [res]
                                    (p/resolve! s res))
-                                 (fn [e] (p/reject! s e))
-                                 )
+                                 (fn [e] (p/reject! s e)))
                         (catch Exception e
-                          (p/reject! s e))
-                        ) ))))
+                          (p/reject! s e)))))))
       ;; register the handler at ctx
       (if (map? state)
         (assoc state addr handler)
-        state) )))
+        state))))
 
 (defn- build-actor
   [topics {:keys [on-error on-stop on-start]

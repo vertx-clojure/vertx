@@ -238,6 +238,126 @@ interceptors as pluggable pieces:
 - `vertx.web.interceptors/cookies` handles the cookies reading from
   the request and cookies writing from the response.
 
+## Actor
+
+actor is mocked from the erlang-otp, but not actually same thing. 
+
+here is an example:
+
+```clojure
+(require [vertx.core :as vc])
+(let [system (vc/system)
+      record-score (fn [msg ctx suc err]
+            ;; normally we use the JsonObject to carry the msg, but the clojure's map work too. here is a example of the JsonObject msg
+            (let [ 
+                   body (:body msg)
+                   name (.get body "name")
+                   score (.getLong body "score")
+                   ]
+                   (suc {
+                         :merge {name score
+                                 :sum (+ (:sum ctx) score)}
+                         :reply true})
+                     )
+      )
+      compute-fn (fn [msg {:keys [sum]} suc err]
+         ;; here is a example that actor accept the clojure-map struct
+         (let [ body   (:body msg)
+                act    (:act body)
+                modify (:value body)]
+            (suc {:compute 
+                   ;; use the compute so that it should be run at event-loop. it's pretty useful if you need to get the data at worker-thread and modify the ctx with concurrent-protect
+                    (fn [{:keys [sum] :as ctx}]
+                      {:sum 
+                        (if (= :add act)
+                          (+ sum modify)
+                          (- sum modify))})
+                  ;; the sum at here is not same as super one.
+                  :reply (or sum 0)})
+         ))
+       actor (vc/actor {"add-score" record-score
+                        "modify"    compute-fn}
+                       {:on-start (fn [ctx] {:sum 0})})
+      
+      ]
+      (vc/deploy! actor)
+      (promesa.core/then 
+         (vertx.eventbus/request! "add-score" (io.vertx.core.json.JsonObject. {"name" "John" "score" 95}))
+         (fn [r]
+        (promesa.core/then (vertx.exentbus/request! "modify" {:act :add :value 0})
+          (fn [reply]
+            (println "score sum -> " (:body reply))))
+      )))
+```
+
+the actor fn will deal with arguments [msg ctx succ-res-fn err-res-fn], so that you can easily reply the msg at other thread like at `execute-blocking` clourse. if there is error throw out, that will be taken as you invoke the err-res-fn and fail the msg-reply.
+
+- msg key -> `[:headers :body ^IFn :reply ^io.vertx.core.Message :self]`
+- actor context, it's actually store at verticle-context's "state". 
+    you can get it by `(.get (vertx.core/current-context) "state")`
+
+## Web build by Route
+
+i like the erlang-otp(? no, elixir inspire me actually).
+so here is some api like elixir-phoenix-style(no, no, no the style). it would build the route simply for you, i think is better than the origin vertx-clojure code.
+
+```clojure
+(ns user
+  (:require [vertx.promise :as p]))
+(defn login
+  "login function, mock it"
+  [request]
+    (let [dto  (.toJson (:body request))]
+      (if (and (-> dto (.getString "user") (= "admin"))
+               (-> dto (.getString "passwd") (= "6-6-6-6-6-6"))
+          (p/resolved {"code" 0 "data" {"user" "admin" "loginAt" (new java.util.Date)}})
+          (p/resolved {"code" -1 "errorMsg" "fail to login, please check the name and password"})
+      ))
+    )
+  )
+  
+(ns gallery
+  (:require [vertx.promise: as p]))
+
+;; i'm lazy to impl it
+(declare upload-gallery)
+
+(defn view-gallery
+   "use the vertx file-system to read it, the vertx file-system will return a future, that it's why i use the future as return value to the request-handler"
+   [request]
+   (let [file-name (-> request (:param) (.get "filename"))
+         vertx (.onwner (vc/currentContext))]
+     (-> vertx (.filesystem)
+       (.read file-name)
+       ;; i'm not impl the set context-type here now, see the io.vertx.http.HttpServerResponse please
+       (p/then (impl-context-type (:response request))))
+   ))
+  
+(def sub-route [[:GET  "/api/gallery" view-gallery]
+                [:POST "/api/gallery" upload-gallery]
+                ;; the path-argument-extrater will set the file-name into param by read the uri. the regex will set true. the handler is just io.vertx.core.Handler<HttpServerRequest> like the vert.x own BodyHandler see io.vertx.ext.web.BodyHandler.
+                {:path ["/api/gallery/(\\d*)"] :regex true :handler [path-argument-extrater] :respond view-gallery}
+                ])
+
+(ns server)
+
+
+;; that's a littler cool than the origin vert'x style isn't it?
+(def router-handler
+(vertx.web/build-route 
+   [["/api/version" (fn [request] (vertx.promise/resolved {"code" 0 "data" "v0.0.1"})]
+    [:POST "/api/user/login" user/login]
+   ]
+   {:routes gallery/sub-route}
+   ]))
+;; create a vertx herer
+(def s (vertx.core/system))
+;; the server is just create a HttpServer
+(vertx.web/server s
+    ;; the handler will create a Router (Handler<HttpServerRequest>), and it accept vararg router handler, the handler shoudl be like (fn [router] ...). you can view it as source code
+    {:handler (vertx.web/handler s router-handler ) :port 8095})
+```
+
 
 ## License ##
 
