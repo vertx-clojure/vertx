@@ -5,7 +5,7 @@
             [vertx.http :as vh]
             [promesa.core :as p]
             [vertx.web  :as vw]
-            [jsonista.core :as j]
+;;            [jsonista.core :as j]
             [vertx.web.client :as cli]))
 
 ;; start the http server
@@ -100,3 +100,71 @@
 (assert @body "require the response")
 
 (assert (= @name "me") (str "request name seems wrong, here got " @name))
+
+
+;; init
+(def s (vc/system))
+
+(defn a [ctx]
+  (let [shopId (.get (:param ctx) "shopId")]
+  (println "data got -> " (type shopId))
+  (vertx.promise/resolved {"shopId" (+ 1 shopId)})))
+;; create server
+(vh/server s
+           {:handler  (vw/handler s
+                                  (vw/handle-error 500 (fn [e ctx]
+                                                      (println e)
+                                                      (.json ctx {"code" 0
+                                                                  "error" (str e)})))
+                                  (vw/build-route
+                                   [["/api/test" a]] ))
+  :port 8095})
+(.close s)
+
+
+
+
+(ns a)
+(defn test-one
+  [ctx]
+  (println "here we go")
+  (vertx.promise/resolved {"code" 1
+                           "time" (System/currentTimeMillis)}))
+
+(def r1 [["/api/test" test-one]])
+
+(ns b)
+
+
+(defn context-handler
+  [ctx]
+  (println "i should decode the json")
+;;  (.json (:routing-context ctx) {"code" 1})
+  (.next (:routing-context ctx))
+  )
+
+
+(def route [{:routes a/r1
+             ;;:path "/api/test"
+             :handler [context-handler]
+             }])
+
+
+(def s (vertx.core/system))
+(println route)
+(vertx.http/server s
+                   {:handler (vertx.web/handler
+                              s
+                              (vertx.web/handle-error 500
+                                                       (fn [e ctx]
+                                                         (println e)
+                                                         (.json ctx {"code" -1 "error" (str e)})))
+                              (vertx.web/build-route b/route)
+                              )
+ :port 8085})
+(.close s)
+
+(def ROUTER-LIST
+  ;; for debug and some special use
+  ;; TODO make it better
+  (java.util.concurrent.ConcurrentHashMap.)
