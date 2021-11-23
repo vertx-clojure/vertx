@@ -113,8 +113,14 @@
     (Msg. body metadata nil)))
 
 (defn- opts->delivery-opts
-  [{:keys [codec local?]}]
-  (let [^DeliveryOptions opts (DeliveryOptions.)]
+  [{:keys [codec local?] :as o}]
+  (let [^DeliveryOptions opts (DeliveryOptions.)
+        toStr (fn [x] (if (keyword? x) (.substring (str x) 1) x))]
     (.setCodecName opts (or codec "clj:msgpack"))
     (when local? (.setLocalOnly opts true))
-    opts))
+    (reduce (fn [o [i v]]
+              (when (not (and (= i :codec) (= i :local?)))
+                (.addHeader  ^DeliveryOptions o (toStr i)  (str v))
+                )
+              )
+    opts o) ))
