@@ -1,4 +1,4 @@
-(defproject vertx-clojure/vertx "0.0.1-RELEASE"
+(defproject vertx-clojure/vertx "0.0.2-SNAPSHOT"
   :description "vert.x clojure style wrap package"
   :url "https://github.com/dG94Cg/vertx"
   :license {:name "MPL-2.0"
