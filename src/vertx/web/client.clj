@@ -188,7 +188,7 @@
               {:host (.getHost url-struct)
                :port r_port
                :method method
-               :uri  (.getFile url-struct)
+               :uri  (str "/" (.getFile url-struct))
                :ssl  ssl })))
 
   ([cli method host uri]
