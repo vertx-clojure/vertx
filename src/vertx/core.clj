@@ -252,8 +252,8 @@
                     ;; handle the response, use the promise to handle response
                     ;; provice the resolve!/reject! to handle the result so that you can return at another thread(working-thread) and make a fast reply.
                     (let [s  (p/deferred)
-                          e  (p/error s (fn [e] (.fail event -1 (str e))))
-                          c  (p/then s (fn [res] (merge-and-reply ctx event res)))]
+                          c  (p/then s (fn [res] (merge-and-reply ctx event res)))
+                          _  (p/catch c (fn [e] (.fail event -1 (str e))))]
                       (try
                         (handler (convert-event event) (.get ctx "state")
                                  ;; use lambda to complete promise
