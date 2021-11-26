@@ -71,9 +71,8 @@
          h (vu/deferred->handler d)
          wrap-task (reify Handler
                      (handle [_ promise]
-                       (.complete promise (task))
-                       ))
-         ]
+                       (.complete promise (task))))]
+
      (.executeBlocking ctx wrap-task  ordered h)
      ;; return the handle promise
      d)))
@@ -119,15 +118,16 @@
 (s/def :vertx.core$actor/on-message fn?)
 (s/def ::actor-options
   (s/keys ;;:req-un [:vertx.core$actor/on-message] ;; no need for on-message now
-          :opt-un [:vertx.core$verticle/on-start
-                   :vertx.core$verticle/on-error
-                   :vertx.core$verticle/on-stop]))
+   :opt-un [:vertx.core$verticle/on-start
+            :vertx.core$verticle/on-error
+            :vertx.core$verticle/on-stop]))
 ;; actor -> {"addr" (fn [event ctx])} -> {:on-start fn :on-stop fn :on-error fn} -> verticle
 
 (defn actor
   "A shortcut for create a verticle instance (factory) that consumes a
   specific topic.
-  actor -> topics : {\"addr\" (fn [event actor-ctx])} -> options : {:on-start fn :on-stop fn :on-error fn} -> verticle.
+  actor -> topics : {addr-str (fn [event actor-ctx resolve! reject!])} -> options : {:on-start fn/{} :on-stop fn :on-error fn} -> verticle.
+  topics is register by reduce, if the trigger-fn isn't fn it wound be eval as fn and be cached for 200ms for next invoke
   :on-start should return actor-state, or it should be {}"
   [topics options]
   ;; require a list or vector
@@ -185,23 +185,23 @@
         (vreset! ctx context))
       (getVertx [_] @vsm)
       (^void start [_ ^Promise o]
-       (-> (p/do! (on-start @ctx))
-           (p/handle (fn [state error]
-                       (if error
-                         (do
-                           (.fail o error)
-                           (on-error @ctx error))
-                         (do
-                           (when (map? state)
-                             (vswap! lst merge state))
-                           (.complete o)))))))
+        (-> (p/do! (on-start @ctx))
+            (p/handle (fn [state error]
+                        (if error
+                          (do
+                            (.fail o error)
+                            (on-error @ctx error))
+                          (do
+                            (when (map? state)
+                              (vswap! lst merge state))
+                            (.complete o)))))))
       (^void stop [_ ^Promise o]
-       (p/handle (p/do! (on-stop @ctx @lst))
-                 (fn [_ err]
-                   (if err
-                     (do (on-error err)
-                         (.fail o err))
-                     (.complete o))))))))
+        (p/handle (p/do! (on-stop @ctx @lst))
+                  (fn [_ err]
+                    (if err
+                      (do (on-error err)
+                          (.fail o err))
+                      (.complete o))))))))
 
 (defn- merge-and-reply
   "handle the return of event-handle, accept {:merge {index value} :rm [:index] :compute (fn [ctx] new_ctx) :reply data-for-response}. API-WARM STM is better choice of replacing compute"
@@ -228,13 +228,25 @@
       (.reply event (:reply data) (vxe/opts->delivery-opts (:opt data)))
       (.reply event (:reply data)))))
 
+(defn- cache
+  "because the eval take time so use the cache to speed up"
+  [ctx sy]
+  (let [record (or (.get ctx ":last-record") {})
+        [f time] (.get record sy)
+        now (System/currentTimeMillis)]
+    (if (or (not f) (> (- now 200) time))
+      (let [f-eval (eval sy)
+            now (System/currentTimeMillis)
+            _update (.put ctx ":last-record" (assoc record sy [f-eval now]))]
+        f-eval)
+      f)))
+
 (defn- build-listen-on-topics
   "return a fn that is used as reduce to listen on topic and handle event.
   event -> {:headers :body :address :reply(fn [data]) :self(io.vertx.core.Event)}"
   [ctx]
   (let [vertx (vu/resolve-system ctx)
         bus   (.eventBus vertx)
-        ctx   (.getContext vertx)
         convert-event (fn [event]
                         {:headers (.headers event)
                          :body (.body event)
@@ -245,31 +257,31 @@
                          :self event})]
 
 ;; this state is not to be used at event
-    (fn [state [addr handler]]
+    (fn [cnt [addr handler]]
       ;; listen the event instead of the eventbus because the origin one will auto response
       (.consumer bus (str addr)
                  (vu/fn->handler
                   (fn [event]
                     ;; handle the response, use the promise to handle response
                     ;; provice the resolve!/reject! to handle the result so that you can return at another thread(working-thread) and make a fast reply.
-                    (let [s  (p/deferred)
+                    (let [ctx   (.getOrCreateContext vertx)
+                          s  (p/deferred)
                           c  (p/then s (fn [res] (merge-and-reply ctx event res)))
                           _  (p/catch c (fn [e]
                                           (.fail event -1 (str e))
                                           (when-let [handler (.exceptionHandler vertx)]
                                             (.handle handler e))))]
                       (try
-                        (handler (convert-event event) (.get ctx "state")
-                                 ;; use lambda to complete promise
-                                 (fn [res]
-                                   (p/resolve! s res))
-                                 (fn [e] (p/reject! s e)))
+                        (let [handler (if (fn? handler) handler (cache ctx handler))]
+                          (handler (convert-event event) (.get ctx "state")
+                                 ;; use lambda to remove promesa deps
+                                   (fn [res]
+                                     (p/resolve! s res))
+                                   (fn [e] (p/reject! s e))))
                         (catch Exception e
                           (p/reject! s e)))))))
       ;; register the handler at ctx
-      (if (map? state)
-        (assoc state addr handler)
-        state))))
+      (+ cnt 1))))
 
 (defn- build-actor
   [topics {:keys [on-error on-stop on-start]
@@ -277,10 +289,10 @@
                 on-start (constantly {})
                 on-stop (constantly nil)}}]
   (letfn [(-on-start [ctx]
-            (let [inital-state (on-start ctx)
+            (let [inital-state (if (fn? on-start)  (on-start ctx)  on-start)
                   state        (if (nil? inital-state) {} inital-state)
                   listen       (build-listen-on-topics ctx)]
-              (reduce listen state topics)
+              (reduce listen 0 topics)
               (.put ctx "state" state)
               state))]
               ;; set the state into context for further use
@@ -309,8 +321,7 @@
             config)
           ;; convert the pmap into jsonObject
           (toConfig [pmap]
-            (reduce put (JsonObject.) pmap))
-            ]
+            (reduce put (JsonObject.) pmap))]
     (let [opts (DeploymentOptions.)]
       (when instances (.setInstances opts (int instances)))
       (when worker (.setWorker opts worker))

@@ -47,7 +47,7 @@
 
 (defn- ->request
   [^HttpServerRequest request]
-  {:method (-> request .rawMethod .toLowerCase keyword)
+  {:method (-> request .method .name .toLowerCase keyword)
    :path (.path request)
    :headers (->headers (.headers request))
    ::request request

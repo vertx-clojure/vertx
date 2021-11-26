@@ -22,7 +22,7 @@
 (defn resolve!
   "complete promise with a data"
   ([p] (.complete p)
-   p)
+       p)
   ([p data]
    (.complete p data)
    p))
@@ -42,19 +42,10 @@
   [error]
   (Future/failedFuture error))
 
-(defn from
-  "(future (fn [p] (resolve p true))) let fn decide create future"
-  [fn-promise]
-  (Future/future (reify
-                   io.vertx.core.Handler
-                   (handle [_ p]
-                     (fn-promise p)))))
-
 (defn fail!
   "send fail to promise"
   [p error] (.fail p error)
-  p
-  )
+  p)
 
 (defn fail'
   "try-fail promise"
@@ -72,7 +63,7 @@
   (.result fu))
 (defn cause' [fu]
   "get error cause, null if succeeded or not completed"
-  (.cause fu)  )
+  (.cause fu))
 
 (defn fail?
   [fu]
@@ -90,8 +81,7 @@
                     io.vertx.core.Handler
                     (handle [_ r]
                       (success-or-error-fn (.result r)
-                                           (.cause r))
-                      ))))
+                                           (.cause r))))))
 
 (defn handle'
   "(handle future (fn [result error]))"
@@ -102,21 +92,19 @@
                       (success-or-error-fn
                        (.succeeded r)
                        (.result r)
-                       (.cause r))
-                      ))))
+                       (.cause r))))))
 (defn then
   "set the next action of future if succeeded"
   [fu fn-on-success]
   (handle' fu (fn [suc t _]
-               (when suc
-                 (fn-on-success t)))))
+                (when suc
+                  (fn-on-success t)))))
 (defn error-then
   "handle error"
   [fu fn-on-error]
   (handle' fu (fn [suc _ e]
-               (when (not suc)
-                 (fn-on-error e)
-                 ))))
+                (when (not suc)
+                  (fn-on-error e)))))
 
 (defn compose
   "handle data or error and convert into new future.
@@ -125,17 +113,16 @@
   (compose future fn-succeeded fn-failed)"
   ([fu f-succes] (compose fu f-succes failed))
   ([fu f-succes f-error] (try (.compose
-                          fu
-                          (reify
-                            java.util.function.Function
-                            (apply [_ t]
-                              (f-succes t)))
-                          (reify
-                            java.util.function.Function
-                            (apply [_ t]
-                              (f-error t)))
-                          )
-  (catch Exception e (failed e)))))
+                               fu
+                               (reify
+                                 java.util.function.Function
+                                 (apply [_ t]
+                                   (f-succes t)))
+                               (reify
+                                 java.util.function.Function
+                                 (apply [_ t]
+                                   (f-error t))))
+                              (catch Exception e (failed e)))))
 
 (def chain compose)
 
@@ -144,14 +131,13 @@
   [fu f]
   (compose fu
            (fn [x]
-             (resolved (f x)) )))
+             (resolved (f x)))))
 
 (defn recover
   "recover, recover the failed future into a good one"
   [fu r]
   (compose fu resolved (fn [e]
-                         (resolved (r e))))
-  )
+                         (resolved (r e)))))
 
 (defn ->completeStage
   [fu]
@@ -160,3 +146,12 @@
 (defn fromCompleteStage
   [stage]
   (Future/fromCompletionStage stage))
+(defn from
+  "convert stage or (future (fn [p] (resolve p true))) let fn decide create future"
+  [fn-promise]
+  (if (instance? java.util.concurrent.CompletionStage  fn-promise)
+    (fromCompleteStage fn-promise)
+    (Future/future (reify
+                     io.vertx.core.Handler
+                     (handle [_ p]
+                       (fn-promise p))))))
