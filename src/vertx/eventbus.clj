@@ -112,7 +112,7 @@
         body (.body msg)]
     (Msg. body metadata nil)))
 
-(defn- opts->delivery-opts
+(defn opts->delivery-opts
   [{:keys [codec local?] :as o}]
   (let [^DeliveryOptions opts (DeliveryOptions.)
         toStr (fn [x] (if (keyword? x) (.substring (str x) 1) x))]

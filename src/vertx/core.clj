@@ -207,11 +207,11 @@
   "handle the return of event-handle, accept {:merge {index value} :rm [:index] :compute (fn [ctx] new_ctx) :reply data-for-response}. API-WARM STM is better choice of replacing compute"
   [ctx event data]
   ;; sync the context first, because the actor may send event to self
-  (let [state (.get ctx "state")]
+  (let [state (or (.get ctx "state") {})]
     (cond
       ;; compute the data, it will invoke with ctx and set merge it into ctx, because the event maybe handle by the other worker thread but wana use a atomic run.
       (:compute data) (let [new_ctx ((:compute data) state)]
-                        (.put ctx "state" (merge state new_ctx)))
+                        (.put ctx "state" new_ctx))
       ;; merge the data into context
       (:merge data) (.put ctx "state" (merge state (:merge data)))
       ;; rm the data
@@ -224,13 +224,14 @@
 
 ;; send the response
   (when (:reply data)
-    (.reply event
-            (io.vertx.core.json.Json/encode data))))
+    (if (:opt data)
+      (.reply event (:reply data) (vxe/opts->delivery-opts (:opt data)))
+      (.reply event (:reply data)))))
 
 (defn- build-listen-on-topics
   "return a fn that is used as reduce to listen on topic and handle event.
   event -> {:headers :body :address :reply(fn [data]) :self(io.vertx.core.Event)}"
-  [ctx topics]
+  [ctx]
   (let [vertx (vu/resolve-system ctx)
         bus   (.eventBus vertx)
         ctx   (.getContext vertx)
@@ -253,7 +254,10 @@
                     ;; provice the resolve!/reject! to handle the result so that you can return at another thread(working-thread) and make a fast reply.
                     (let [s  (p/deferred)
                           c  (p/then s (fn [res] (merge-and-reply ctx event res)))
-                          _  (p/catch c (fn [e] (.fail event -1 (str e))))]
+                          _  (p/catch c (fn [e]
+                                          (.fail event -1 (str e))
+                                          (when-let [handler (.exceptionHandler vertx)]
+                                            (.handle handler e))))]
                       (try
                         (handler (convert-event event) (.get ctx "state")
                                  ;; use lambda to complete promise
@@ -275,7 +279,7 @@
   (letfn [(-on-start [ctx]
             (let [inital-state (on-start ctx)
                   state        (if (nil? inital-state) {} inital-state)
-                  listen       (build-listen-on-topics ctx topics)]
+                  listen       (build-listen-on-topics ctx)]
               (reduce listen state topics)
               (.put ctx "state" state)
               state))]
