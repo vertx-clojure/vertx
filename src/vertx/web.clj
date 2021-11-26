@@ -280,8 +280,7 @@
 
 ;; real action to register the route
 (defn- register-route'
-  [router' {:keys [name order blocking regex uri method routes router handler respond custom
-                   options] :as config}]
+  [router' {:keys [name order blocking regex uri method routes router handler respond custom options] :as config}]
   (let [^Route r (.route router')]
     ;; set the default handler
     (set-default-handler r options)

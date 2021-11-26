@@ -61,8 +61,11 @@
 
 ;; use the request to replace the get and post please
 
-(defn- to-method [method]
-  (HttpMethod/valueOf (str method)))
+(defn to-method [method]
+  (let [m (HttpMethod/valueOf (if (keyword? method) (-> (str method) (.substring 1)) (str method)))]
+    (assert (.contains (HttpMethod/values) m) (str "method[" method "]must be http method"))
+    m
+    ))
 
 (defn- to-proxy-opt [opt]
   (let [option (ProxyOptions.)]
@@ -185,11 +188,11 @@
                               443
                               80)
                             port)]
-              {:host (.getHost url-struct)
-               :port r_port
-               :method method
-               :uri  (str "/" (.getFile url-struct))
-               :ssl  ssl })))
+                  {:host (.getHost url-struct)
+                   :port r_port
+                   :method method
+                   :uri   (.getFile url-struct)
+                   :ssl  ssl})))
 
   ([cli method host uri]
    (request cli {:host host
@@ -207,38 +210,37 @@
 
   ;; real request, wrap the request-option into real one
   ([cli request-option]
+
    (let [m (to-method (:method request-option))
          o (to-request-option request-option)
          req (.request cli m o)
          d (p/deferred)]
      ;; custom the request if require
      ;; you can add header or auth for it, there is no clojure style support for now. sorry
-     (let [custom (:custom request-option)]
-       (when custom
+     (when-let [custom (:custom request-option)]
          (assert (fn? custom) "option {:custom custom} must be fn [^Request request] or nil")
-         ((:custom request-option) req) ))
-
+         ((:custom request-option) req))
      ;; wrap the response into future, the future api is made by origin author
-     (letfn [(future [httpRequest]
+     (letfn [(f-req [httpRequest]
                      ;; here we got a asyncResult. let's checkout if it real workout
                      ;; question why not use a self impl future? the promesa lib use a threadpool that work out of the vertx
                      (.onComplete httpRequest (vu/deferred->handler d))
                      (p/then d (fn [^HttpResponse res]
                                  {:body (.bodyAsBuffer res)
                                   :status (.statusCode res)
-                                  :headers (vh/->headers (.headers res)) })))]
+                                  :headers (vh/->headers (.headers res))})))]
 
        ;; convert the data transform
        (fn
          ([type data]
-            (let [httpRequest (if data
-                                (cond
-                                  (= type :query)  (.send (toQuery req data))
-                                  (= type :json)   (.sendJson req (toJson data))
-                                  (= type :form)   (.sendForm req (toForm data))
-                                  (= type :buffer) (.sendBuffer req (toBuffer data)) )
-                                (.send req) )]
-              (future httpRequest)        ))
+          (let [httpRequest (if data
+                              (cond
+                                (= type :query)  (.send (toQuery req data))
+                                (= type :json)   (.sendJson req (toJson data))
+                                (= type :form)   (.sendForm req (toForm data))
+                                (= type :buffer) (.sendBuffer req (toBuffer data)))
+                              (.send req))]
+            (f-req httpRequest)))
 
          ;; send none data, just send the request
-         ([] (future (.send req))) ) ))))
+         ([] (f-req (.send req))))))))
