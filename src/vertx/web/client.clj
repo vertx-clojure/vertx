@@ -4,7 +4,6 @@
 ;;
 ;; Copyright (c) 2019 Andrey Antukh <niwi@niwi.nz>
 ;; Copyright (c) 2021 Fish Coin <coincoinv@0day.im>
-;; Copyleft 2021 CoinCoinV
 
 (ns vertx.web.client
   "High level http client."
