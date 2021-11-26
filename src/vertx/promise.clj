@@ -1,3 +1,6 @@
+;; Copyleft 2021 CoinCoinV
+;; lisence: MPL
+
 (ns vertx.promise
   (:import io.vertx.core.Future
            io.vertx.core.Promise))

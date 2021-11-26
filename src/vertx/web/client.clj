@@ -4,6 +4,7 @@
 ;;
 ;; Copyright (c) 2019 Andrey Antukh <niwi@niwi.nz>
 ;; Copyright (c) 2021 Fish Coin <coincoinv@0day.im>
+;; Copyleft 2021 CoinCoinV
 
 (ns vertx.web.client
   "High level http client."
@@ -36,8 +37,6 @@
    io.vertx.ext.web.client.WebClientSession
    io.vertx.ext.web.client.WebClient))
 
-;; TODO: accept options
-
 (defn create
   ([vsm] (create vsm {}))
   ([vsm opts]
@@ -47,19 +46,6 @@
 (defn session
   [client]
   (WebClientSession/create client))
-
-(defn get
-  ([session url] (get session url {}))
-  ([session url opts]
-   (let [^HttpRequest req (.getAbs session url)
-         d (p/deferred)]
-     (.send req (vu/deferred->handler d))
-     (p/then d (fn [^HttpResponse res]
-                 {:body (.bodyAsBuffer res)
-                  :status (.statusCode res)
-                  :headers (vh/->headers (.headers res))})))))
-
-;; use the request to replace the get and post please
 
 (defn to-method [method]
   (let [m (HttpMethod/valueOf (if (keyword? method) (-> (str method) (.substring 1)) (str method)))]

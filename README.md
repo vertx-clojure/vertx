@@ -245,7 +245,10 @@ actor is mocked from the erlang-otp, but not actually same thing.
 here is an example:
 
 ```clojure
-(require [vertx.core :as vc])
+(require [vertx.core :as vc]
+         [vertx.eventbus :as bus])
+(defn hot-code []
+  (println "hot"))
 (let [system (vc/system)
       record-score (fn [msg ctx suc err]
             ;; normally we use the JsonObject to carry the msg, but the clojure's map work too. here is a example of the JsonObject msg
@@ -276,7 +279,9 @@ here is an example:
                   :reply (or sum 0)})
          ))
        actor (vc/actor {"add-score" record-score
-                        "modify"    compute-fn}
+                        "modify"    compute-fn
+                        ;; use quote to hot-reload but it won't work with let bound var
+                        "hot-code"  `hot-code}
                        {:on-start (fn [ctx] {:sum 0})})
       
       ]
@@ -288,6 +293,8 @@ here is an example:
           (fn [reply]
             (println "score sum -> " (:body reply))))
       )))
+(defn hot-code []
+  (println "hot code"))
 ```
 
 the actor fn will deal with arguments [msg ctx succ-res-fn err-res-fn], so that you can easily reply the msg at other thread like at `execute-blocking` clourse. if there is error throw out, that will be taken as you invoke the err-res-fn and fail the msg-reply.
@@ -317,7 +324,7 @@ so here is some api like elixir-phoenix-style(no, no, no the style). it would bu
   )
   
 (ns gallery
-  (:require [vertx.promise: as p]))
+  (:require [vertx.promise :as p]))
 
 ;; i'm lazy to impl it
 (declare upload-gallery)
@@ -334,22 +341,27 @@ so here is some api like elixir-phoenix-style(no, no, no the style). it would bu
    ))
   
 (def sub-route [[:GET  "/api/gallery" view-gallery]
-                [:POST "/api/gallery" upload-gallery]
+                ;; use quote to allow hot-reload
+                [:POST "/api/gallery" 'upload-gallery]
                 ;; the path-argument-extrater will set the file-name into param by read the uri. the regex will set true. the handler is just io.vertx.core.Handler<HttpServerRequest> like the vert.x own BodyHandler see io.vertx.ext.web.BodyHandler.
                 {:path ["/api/gallery/(\\d*)"] :regex true :handler [path-argument-extrater] :respond view-gallery}
                 ])
 
-(ns server)
+(ns server
+  (:require [vertx.promise :as p]
+            [vertx.core :as vc]
+            [vertx.web :as web]))
 
 
 ;; that's a littler cool than the origin vert'x style isn't it?
 (def router-handler
-(vertx.web/build-route 
-   [["/api/version" (fn [request] (vertx.promise/resolved {"code" 0 "data" "v0.0.1"})]
-    [:POST "/api/user/login" user/login]
-   ]
-   {:routes gallery/sub-route}
-   ]))
+  (vertx.web/build-route 
+   [["/api/version" (fn [request] (vertx.promise/resolved {"code" 0 "data" "v0.0.1"}))]
+    ;; use symbol to let user/login be able to hot-reload (it contain 200ms cache)
+    [:POST "/api/user/login" `user/login]
+    ;; handler will deal as respond but require to invoke next
+   {:routes gallery/sub-route :handler []}]
+   ))
 ;; create a vertx herer
 (def s (vertx.core/system))
 ;; the server is just create a HttpServer

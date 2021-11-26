@@ -3,6 +3,7 @@
 ;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ;;
 ;; Copyright (c) 2019 Andrey Antukh <niwi@niwi.nz>
+;; Copyleft 2021 CoinCoinV
 
 (ns vertx.core
   (:require [clojure.spec.alpha :as s]
