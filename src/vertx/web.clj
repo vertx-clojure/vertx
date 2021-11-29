@@ -67,6 +67,31 @@
                            ([status e] (.fail routing-context (int status) e)))
      :routing-context    routing-context}))
 
+(defn- cached-router
+  "return a cached router that is dynamic generated, with symbol handler"
+  [vsm handlers]
+  (vu/fn->handler (fn [raw-req]
+                    (try
+                      (let [ctx (.getOrCreateContext vsm)
+                            map (.contextData ctx)
+                            key "__cached.router"
+                            _init     (when (not (.contains map key))      (.putIfAbsent map key (java.util.concurrent.ConcurrentHashMap.)))
+                            cache (.get map key)
+                            [r time] (or (.get cache handlers) [nil 0])]
+                        (if (and r (> time (- (System/currentTimeMillis) 200)))
+                          (do
+                            (println "cached at" time handlers "->" r)
+                            (.handle r raw-req))
+                          (let [r (Router/router vsm)
+                                reg-fn (fn [_ f] (if (fn? f) (f r) ((eval f) r)))]
+                          ;; reg handlers
+                            (reduce reg-fn r handlers)
+                            (.put cache handlers [r (System/currentTimeMillis)])
+                            (println "load " handlers "->" r)
+                            (.handle r raw-req))))
+                      (catch Exception e
+                        (println e))))))
+
 (defn handler
   "Wraps a user defined funcion based handler into a vertx-web aware
   handler (with support for multipart uploads.
@@ -75,8 +100,11 @@
   to resolve the execution of the interceptors + handler."
   [vsm & handlers]
   (let [^Vertx vsm     (vu/resolve-system vsm)
+        require-eval   (reduce #(if %1 %1 (fn? %2)) nil handlers)
         ^Router router (Router/router vsm)]
-    (reduce #(%2 %1) router handlers)))
+    (if require-eval
+      (reduce #(%2 %1) router handlers)
+      (cached-router vsm handlers))))
 
 (defn assets
   ([path] (assets path {}))
