@@ -223,11 +223,17 @@
                                             [rm]))]
                    (.put ctx "state" next_state))))
 
-;; send the response
+  ;; send the response
   (when (:reply data)
     (if (:opt data)
       (.reply event (:reply data) (vxe/opts->delivery-opts (:opt data)))
-      (.reply event (:reply data)))))
+      (.reply event (:reply data))))
+  ;; for wrong use of resolve
+  (when (or (not (map? data)) (reduce #(or %1 (%2 data)) false [:compute :merge :rm :reply]))
+    (.reply event data)
+    )
+  )
+
 
 (defn- cache
   "because the eval take time so use the cache to speed up"
@@ -241,7 +247,6 @@
             _update (.put ctx ":last-record" (assoc record sy [f-eval now]))]
         f-eval)
       f)))
-
 (defn- build-listen-on-topics
   "return a fn that is used as reduce to listen on topic and handle event.
   event -> {:headers :body :address :reply(fn [data]) :self(io.vertx.core.Event)}"
@@ -256,8 +261,7 @@
                                   ([data] (.reply event data))
                                   ([data opt] (.reply event data opt)))
                          :self event})]
-
-;; this state is not to be used at event
+    ;; this state is not to be used at event
     (fn [cnt [addr handler]]
       ;; listen the event instead of the eventbus because the origin one will auto response
       (.consumer bus (str addr)

@@ -151,6 +151,16 @@
   (compose fu resolved (fn [e]
                          (resolved (r e)))))
 
+(def join
+  "join, make combine/join a list of promise into one,[Promise ?] -> Promise[?]"
+  [promise-list]
+  (reduce
+   #(chain %2 (fn [data] (fmap %1 (fn [list] (conj list data)))))
+   (resolved [])
+   promise-list
+   )
+  )
+
 (defn ->completeStage
   [fu]
   (.toCompletionStage fu))
