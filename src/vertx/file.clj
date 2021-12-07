@@ -1,6 +1,6 @@
 (ns vertx.file
   (:import [io.vertx.core Vertx Context]
-           [io.vertx.core.fs FileSystem]))
+           [io.vertx.core.file FileSystem]))
 
 (defn file-system [vsm]
   (cond (instance? Vertx vsm)   (.fileSystem vsm)
