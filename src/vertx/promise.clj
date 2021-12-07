@@ -151,7 +151,7 @@
   (compose fu resolved (fn [e]
                          (resolved (r e)))))
 
-(def join
+(defn join
   "join, make combine/join a list of promise into one,[Promise ?] -> Promise[?]"
   [promise-list]
   (reduce
