@@ -82,14 +82,12 @@
               [r time]  (or (.get cache handlers) [nil 0])]
           (if (and r (> time (- (System/currentTimeMillis) 200)))
             (do
-              (println "cached at" time handlers "->" r)
               (.handle r raw-req))
             (let [r      (Router/router vsm)
                   reg-fn (fn [_ f] (if (fn? f) (f r) ((eval f) r)))]
               ;; reg handlers
               (reduce reg-fn r handlers)
               (.put cache handlers [r (System/currentTimeMillis)])
-              (println "load " handlers "->" r)
               (.handle r raw-req))))
         (catch Exception e
           (println e))))))
