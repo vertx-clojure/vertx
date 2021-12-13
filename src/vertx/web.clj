@@ -102,9 +102,9 @@
   to resolve the execution of the interceptors + handler."
   [vsm & handlers]
   (let [^Vertx vsm     (vu/resolve-system vsm)
-        static-router (reduce #(if %1 %1 (fn? %2)) nil handlers)
+        dynamic-router (reduce #(if %1 %1 (symbol? %2)) nil handlers)
         ^Router router (Router/router vsm)]
-    (if static-router
+    (if dynamic-router
       (reduce #(%2 %1) router handlers)
       (cached-router vsm handlers))))
 
