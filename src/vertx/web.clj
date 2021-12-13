@@ -105,8 +105,8 @@
         dynamic-router (reduce #(if %1 %1 (symbol? %2)) nil handlers)
         ^Router router (Router/router vsm)]
     (if dynamic-router
-      (reduce #(%2 %1) router handlers)
-      (cached-router vsm handlers))))
+      (cached-router vsm handlers)
+      (reduce #(%2 %1) router handlers))))
 
 (defn assets
   ([path] (assets path {}))
