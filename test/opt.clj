@@ -9,7 +9,7 @@
 (println "config -> " config)
 
 (defn test []
-(assert (= (.getValue config ":name"  "coincoinv"))))
+  (assert (= (.getValue config ":name"  "coincoinv"))))
 
 (ns opt)
 (vertx.core/test)

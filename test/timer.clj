@@ -9,7 +9,7 @@
                              "body" (:body message))))
           (on-start [ctx]
             (ve/consumer ctx "test.echo" on-message))]
-    (vc/verticle {:on-start on-start}) ))
+    (vc/verticle {:on-start on-start})))
 
 (defn abs [x] (Math/abs x))
 (println "Vert.x test the timer api")
@@ -20,11 +20,10 @@
                          (fn [] (ve/send! system "test.echo"
                                           (str "time up at " @count))
                            (dosync
-                           (alter count + 1) )))
+                            (alter count + 1))))
 
   (Thread/sleep 5000)
   ;; at this moment, count should be 100 absolutely won't be 1 or more
   (assert (<= (abs (- @count 100)) 1))
-
 
   (.close system))

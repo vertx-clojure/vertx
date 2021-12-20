@@ -7,14 +7,12 @@
   (:import io.vertx.core.json.JsonObject
            io.vertx.ext.web.handler.BodyHandler))
 
-
 (def sys (vc/system))
 
 (defn a [req]
   (let [header (:headers req)
         body (:body req)
-        data (JsonObject. {"h" header "b" (str (type body))})
-        ]
+        data (JsonObject. {"h" header "b" (str (type body))})]
     (println data)
     (p/resolved data)))
 
@@ -34,12 +32,10 @@
                                         route-reg)
                   :port 8095}))
 
-
 (let [c (cli/create sys)
       c (cli/session c)
       r (cli/request c {:host "localhost"
                         :method :POST
                         :port 8095
-                        :uri "/a"
-                        })]
-  (.join (r ) ))
+                        :uri "/a"})]
+  (.join (r)))

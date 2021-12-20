@@ -46,7 +46,7 @@
   ([options]
    (s/assert ::system-options options)
    (let [^VertxOptions opts (opts->vertx-options options)
-         ^Vertx vsm (Vertx/vertx opts)]
+         ^Vertx vsm         (Vertx/vertx opts)]
      (vxe/configure! vsm opts)
      vsm)))
 
@@ -68,13 +68,14 @@
   "execute blocking task (current if not explicitly provided), return the promise"
   ([task] (execute-blocking task (current-context) true))
   ([task ctx ordered]
-   (let [d (p/deferred)
-         h (vu/deferred->handler d)
-         wrap-task (reify Handler
+   (let [d         (p/deferred)
+         h         (vu/deferred->handler d)
+         wrap-task (reify
+                     Handler
                      (handle [_ promise]
                        (.complete promise (task))))]
 
-     (.executeBlocking ctx wrap-task  ordered h)
+     (.executeBlocking ctx wrap-task ordered h)
      ;; return the handle promise
      d)))
 
@@ -119,9 +120,10 @@
 (s/def :vertx.core$actor/on-message fn?)
 (s/def ::actor-options
   (s/keys ;;:req-un [:vertx.core$actor/on-message] ;; no need for on-message now
-   :opt-un [:vertx.core$verticle/on-start
-            :vertx.core$verticle/on-error
-            :vertx.core$verticle/on-stop]))
+   :opt-un
+   [:vertx.core$verticle/on-start
+    :vertx.core$verticle/on-error
+    :vertx.core$verticle/on-stop]))
 ;; actor -> {"addr" (fn [event ctx])} -> {:on-start fn :on-stop fn :on-error fn} -> verticle
 
 (defn actor
@@ -175,27 +177,29 @@
 
 (defn- build-verticle
   [{:keys [on-start on-stop on-error]
-    :or {on-error (constantly nil)
-         on-stop (constantly nil)}}]
+    :or   {on-error (constantly nil)
+           on-stop  (constantly nil)}}]
   (let [vsm (volatile! nil)
         ctx (volatile! nil)
         lst (volatile! nil)]
-    (reify Verticle
+    (reify
+      Verticle
       (init [_ instance context]
         (vreset! vsm instance)
         (vreset! ctx context))
       (getVertx [_] @vsm)
       (^void start [_ ^Promise o]
         (-> (p/do! (on-start @ctx))
-            (p/handle (fn [state error]
-                        (if error
-                          (do
-                            (.fail o error)
-                            (on-error @ctx error))
-                          (do
-                            (when (map? state)
-                              (vswap! lst merge state))
-                            (.complete o)))))))
+            (p/handle
+             (fn [state error]
+               (if error
+                 (do
+                   (.fail o error)
+                   (on-error @ctx error))
+                 (do
+                   (when (map? state)
+                     (vswap! lst merge state))
+                   (.complete o)))))))
       (^void stop [_ ^Promise o]
         (p/handle (p/do! (on-stop @ctx @lst))
                   (fn [_ err]
@@ -214,14 +218,14 @@
       (:compute data) (let [new_ctx ((:compute data) state)]
                         (.put ctx "state" new_ctx))
       ;; merge the data into context
-      (:merge data) (.put ctx "state" (merge state (:merge data)))
+      (:merge data)   (.put ctx "state" (merge state (:merge data)))
       ;; rm the data
-      (:rm data) (let [rm (:rm data)
-                       next_state (reduce dissoc state
-                                          (if (or (list? rm) (vector? rm))
-                                            rm
-                                            [rm]))]
-                   (.put ctx "state" next_state))))
+      (:rm data)      (let [rm         (:rm data)
+                            next_state (reduce dissoc state
+                                               (if (or (list? rm) (vector? rm))
+                                                 rm
+                                                 [rm]))]
+                        (.put ctx "state" next_state))))
 
   ;; send the response
   (when (:reply data)
@@ -229,21 +233,20 @@
       (.reply event (:reply data) (vxe/opts->delivery-opts (:opt data)))
       (.reply event (:reply data))))
   ;; for wrong use of resolve
-  (when (or (not (map? data)) (reduce #(or %1 (%2 data)) false [:compute :merge :rm :reply]))
-    (.reply event data)
-    )
-  )
-
+  (when
+   (or (not (map? data))
+       (not (reduce #(or %1 (%2 data)) false [:compute :merge :rm :reply])))
+    (.reply event data)))
 
 (defn- cache
   "because the eval take time so use the cache to speed up"
   [ctx sy]
-  (let [record (or (.get ctx ":last-record") {})
+  (let [record   (or (.get ctx ":last-record") {})
         [f time] (.get record sy)
-        now (System/currentTimeMillis)]
+        now      (System/currentTimeMillis)]
     (if (or (not f) (> (- now 200) time))
-      (let [f-eval (eval sy)
-            now (System/currentTimeMillis)
+      (let [f-eval  (eval sy)
+            now     (System/currentTimeMillis)
             _update (.put ctx ":last-record" (assoc record sy [f-eval now]))]
         f-eval)
       f)))
@@ -251,16 +254,16 @@
   "return a fn that is used as reduce to listen on topic and handle event.
   event -> {:headers :body :address :reply(fn [data]) :self(io.vertx.core.Event)}"
   [ctx]
-  (let [vertx (vu/resolve-system ctx)
-        bus   (.eventBus vertx)
+  (let [vertx         (vu/resolve-system ctx)
+        bus           (.eventBus vertx)
         convert-event (fn [event]
                         {:headers (.headers event)
-                         :body (.body event)
+                         :body    (.body event)
                          :address (.address event)
-                         :reply (fn
-                                  ([data] (.reply event data))
-                                  ([data opt] (.reply event data opt)))
-                         :self event})]
+                         :reply   (fn
+                                    ([data] (.reply event data))
+                                    ([data opt] (.reply event data opt)))
+                         :self    event})]
     ;; this state is not to be used at event
     (fn [cnt [addr handler]]
       ;; listen the event instead of the eventbus because the origin one will auto response
@@ -270,16 +273,17 @@
                     ;; handle the response, use the promise to handle response
                     ;; provice the resolve!/reject! to handle the result so that you can return at another thread(working-thread) and make a fast reply.
                     (let [ctx   (.getOrCreateContext vertx)
-                          s  (p/deferred)
-                          c  (p/then s (fn [res] (merge-and-reply ctx event res)))
-                          _  (p/catch c (fn [e]
-                                          (.fail event -1 (str e))
-                                          (when-let [handler (.exceptionHandler vertx)]
-                                            (.handle handler e))))]
+                          s     (p/deferred)
+                          c     (p/then s (fn [res] (merge-and-reply ctx event res)))
+                          _     (p/catch c
+                                         (fn [e]
+                                           (.fail event -1 (str e))
+                                           (when-let [handler (.exceptionHandler vertx)]
+                                             (.handle handler e))))]
                       (try
                         (let [handler (if (fn? handler) handler (cache ctx handler))]
                           (handler (convert-event event) (.get ctx "state")
-                                 ;; use lambda to remove promesa deps
+                                   ;; use lambda to remove promesa deps
                                    (fn [res]
                                      (p/resolve! s res))
                                    (fn [e] (p/reject! s e))))
@@ -289,21 +293,24 @@
       (+ cnt 1))))
 
 (defn- build-actor
-  [topics {:keys [on-error on-stop on-start]
-           :or {on-error (constantly nil)
-                on-start (constantly {})
-                on-stop (constantly nil)}}]
-  (letfn [(-on-start [ctx]
-            (let [inital-state (if (fn? on-start)  (on-start ctx)  on-start)
-                  state        (if (nil? inital-state) {} inital-state)
-                  listen       (build-listen-on-topics ctx)]
-              (reduce listen 0 topics)
-              (.put ctx "state" state)
-              state))]
-              ;; set the state into context for further use
-    (build-verticle {:on-error on-error
-                     :on-stop on-stop
-                     :on-start -on-start})))
+  [topics
+   {:keys [on-error on-stop on-start]
+    :or   {on-error (constantly nil)
+           on-start (constantly {})
+           on-stop  (constantly nil)}}]
+  (letfn
+   [(-on-start [ctx]
+      (let [inital-state (if (fn? on-start) (on-start ctx) on-start)
+            state        (if (nil? inital-state) {} inital-state)
+            listen       (build-listen-on-topics ctx)]
+        (reduce listen 0 topics)
+        (.put ctx "state" state)
+        state))]
+    ;; set the state into context for further use
+    (build-verticle
+     {:on-error on-error
+      :on-stop  on-stop
+      :on-start -on-start})))
 
 (defn- build-disposable
   [vsm id]
@@ -321,12 +328,13 @@
 (defn- opts->deployment-options
   [{:keys [instances worker config]}]
 
-  (letfn [(put [config [index value]]
-            (.put config (str index) value)
-            config)
-          ;; convert the pmap into jsonObject
-          (toConfig [pmap]
-            (reduce put (JsonObject.) pmap))]
+  (letfn
+   [(put [config [index value]]
+      (.put config (str index) value)
+      config)
+     ;; convert the pmap into jsonObject
+    (toConfig [pmap]
+      (reduce put (JsonObject.) pmap))]
     (let [opts (DeploymentOptions.)]
       (when instances (.setInstances opts (int instances)))
       (when worker (.setWorker opts worker))

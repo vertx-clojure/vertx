@@ -4,18 +4,15 @@
 
 (defn file-system [vsm]
   (cond (instance? Vertx vsm)   (.fileSystem vsm)
-        (instance? FileSystem vsm) vsm
-        (instance? Context vsm) (file-system (.owner vsm))
-        :else (throw (RuntimeException. "Not Vertx Instance"))
-        ))
+        (instance? FileSystem vsm)  vsm
+        (instance? Context vsm)     (file-system (.owner vsm))
+        :else                       (throw (RuntimeException. "Not Vertx Instance"))))
 
 (defn- build-copy [& opt]
-  opt
-  )
+  opt)
 
 (defn copy [vsm from to & opt]
-  (.copy (file-system vsm) from to (build-copy opt))
-  )
+  (.copy (file-system vsm) from to (build-copy opt)))
 
 (defn move [vsm from to & opt]
   (.move (file-system vsm) from to (build-copy opt)))
@@ -33,8 +30,7 @@
     (.chown (file-system vsm) path user group)))
 
 (defn prop [vsm path]
-  (.prop (file-system vsm)  path)
-  )
+  (.prop (file-system vsm) path))
 
 (defn link [vsm link existing]
   (.link (file-system vsm) link existing))
@@ -50,7 +46,6 @@
 
 (defn delete [vsm path & rec]
   (.deleteRecursive (file-system vsm) path rec))
-
 
 (defn mkdir [vsm path perm]
   (.mkdir (file-system vsm) path perm))

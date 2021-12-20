@@ -47,10 +47,10 @@
   (WebClientSession/create client))
 
 (defn to-method [method]
-  (let [m (HttpMethod/valueOf (if (keyword? method) (-> (str method) (.substring 1)) (str method)))]
+  (let [m (HttpMethod/valueOf
+           (if (keyword? method) (-> (str method) (.substring 1)) (str method)))]
     (assert (.contains (HttpMethod/values) m) (str "method[" method "]must be http method"))
-    m
-    ))
+    m))
 
 (defn- to-proxy-opt [opt]
   (let [option (ProxyOptions.)]
@@ -59,7 +59,7 @@
     (.setUsername option (:username opt))
     (.setPassword option (:password opt))
     (.setType option (ProxyType/valueOf (str (:type opt))))
-    option ))
+    option))
 
 (defn- to-request-option [opt]
   (let [option (RequestOptions.)]
@@ -68,28 +68,28 @@
     (.setSsl  option (:ssl opt))
     (.setURI  option (or (:uri opt) "/"))
     (when (:timeout opt)
-      (.setTimeout option (.intValue (:timeout opt))) )
+      (.setTimeout option (.intValue (:timeout opt))))
     (when (:followRedirects opt)
-      (.setFollowRedirects option (:followRedirects opt)) )
+      (.setFollowRedirects option (:followRedirects opt)))
     ;; add headers
     (when (:headers opt)
       (reduce (fn [_ [name value]]
                 (if (or (symbol? name) (keyword? name))
-                (.putHeader option (.substring (str name) 1) (str value))
-                (.putHeader option (str name) (str value)) ))
+                  (.putHeader option (.substring (str name) 1) (str value))
+                  (.putHeader option (str name) (str value))))
               {}
-              (:headers opt) ))
+              (:headers opt)))
     (when (:proxy opt)
       (.setProxyOptions option
-                        (to-proxy-opt (:proxy opt)) ))
-    option ))
+                        (to-proxy-opt (:proxy opt))))
+    option))
 
 (defn- is-ssl [url-struct]
   (let* [p   (.getProtocol url-struct)
          len (.length p)
          lc  (.charAt p (- len 1))
          c   (Character/toUpperCase lc)]
-    (= c \S)))
+        (= c \S)))
 
 (defn- toJson
   "convert the data into Json for the further use"
@@ -122,14 +122,12 @@
     (map? data)    (reduce (fn [js [x y]]
                              (if (or (symbol? x) (keyword? x))
                                (.put js (.substring (str x) 1) (toJson y))
-                               (.put js (str x) (toJson y))
-                               )
+                               (.put js (str x) (toJson y)))
                              js)
                            (JsonObject.)
                            data)
 
-    true (JsonObject/mapFrom data)
-))
+    true (JsonObject/mapFrom data)))
 
 (defn- toForm
   "convert the immutable-map into Form map, if value is a list, it would be convert into MultiMap"
@@ -138,10 +136,10 @@
     (reduce (fn [_ [i v]]
               (cond
                 (instance? Iterable data) (.add form i v)
-                true (.add form i v) ))
+                true (.add form i v)))
             {}
             data)
-  form))
+    form))
 
 (defn- toBuffer
   "conver the data into buffer, the byte"
@@ -166,18 +164,18 @@
   ([cli method url]
    (request cli
             (let* [url-struct (URL. url)
-                   ssl (is-ssl url-struct)
-                   port (.getPort url-struct)
-                   r_port (if (= port -1)
-                            (if ssl
-                              443
-                              80)
-                            port)]
-                  {:host (.getHost url-struct)
-                   :port r_port
+                   ssl        (is-ssl url-struct)
+                   port       (.getPort url-struct)
+                   r_port     (if (= port -1)
+                                (if ssl
+                                  443
+                                  80)
+                                port)]
+                  {:host   (.getHost url-struct)
+                   :port   r_port
                    :method method
-                   :uri   (.getFile url-struct)
-                   :ssl  ssl})))
+                   :uri    (.getFile url-struct)
+                   :ssl    ssl})))
 
   ([cli method host uri]
    (request cli {:host host
@@ -196,24 +194,26 @@
   ;; real request, wrap the request-option into real one
   ([cli request-option]
 
-   (let [m (to-method (:method request-option))
-         o (to-request-option request-option)
+   (let [m   (to-method (:method request-option))
+         o   (to-request-option request-option)
          req (.request cli m o)
-         d (p/deferred)]
+         d   (p/deferred)]
      ;; custom the request if require
      ;; you can add header or auth for it, there is no clojure style support for now. sorry
      (when-let [custom (:custom request-option)]
-         (assert (fn? custom) "option {:custom custom} must be fn [^Request request] or nil")
-         ((:custom request-option) req))
+       (assert (fn? custom) "option {:custom custom} must be fn [^Request request] or nil")
+       ((:custom request-option) req))
      ;; wrap the response into future, the future api is made by origin author
-     (letfn [(f-req [httpRequest]
-                     ;; here we got a asyncResult. let's checkout if it real workout
-                     ;; question why not use a self impl future? the promesa lib use a threadpool that work out of the vertx
-                     (.onComplete httpRequest (vu/deferred->handler d))
-                     (p/then d (fn [^HttpResponse res]
-                                 {:body (.bodyAsBuffer res)
-                                  :status (.statusCode res)
-                                  :headers (vh/->headers (.headers res))})))]
+     (letfn
+      [(f-req [httpRequest]
+               ;; here we got a asyncResult. let's checkout if it real workout
+               ;; question why not use a self impl future? the promesa lib use a threadpool that work out of the vertx
+         (.onComplete httpRequest (vu/deferred->handler d))
+         (p/then d
+                 (fn [^HttpResponse res]
+                   {:body    (.bodyAsBuffer res)
+                    :status  (.statusCode res)
+                    :headers (vh/->headers (.headers res))})))]
 
        ;; convert the data transform
        (fn

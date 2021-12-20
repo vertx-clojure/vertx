@@ -47,10 +47,10 @@
 
 (defn- ->request
   [^HttpServerRequest request]
-  {:method (-> request .method .name .toLowerCase keyword)
-   :path (.path request)
-   :headers (->headers (.headers request))
-   ::request request
+  {:method    (-> request .method .name .toLowerCase keyword)
+   :path      (.path request)
+   :headers   (->headers (.headers request))
+   ::request  request
    ::response (.response request)})
 
 (defn handler
@@ -78,9 +78,8 @@
         ^HttpServer srv (.createHttpServer vsm opts)
         ^Handler handler (resolve-handler handler)
         error (if error error (vu/fn->handler (fn [e] (println "error: " e))))
-        websocket (if websocket websocket (vu/fn->handler (fn[_] )))
-        close (if close close (vu/fn->handler (fn[_])))
-        ]
+        websocket (if websocket websocket (vu/fn->handler (fn [_])))
+        close (if close close (vu/fn->handler (fn [_])))]
     (doto srv
       (.requestHandler handler)
       (.exceptionHandler error)
@@ -89,8 +88,7 @@
     (-> (.listen srv)
         (.onFailure error)
         (.onSuccess (vu/fn->handler (fn [server]
-                      (println "Http Service[" (.actualPort srv) "] started"))))
-        )
+                                      (println "Http Service[" (.actualPort srv) "] started")))))
     srv))
 
 ;; --- Impl
