@@ -6,7 +6,9 @@ A lightweight clojure adapter for vertx toolkit.
 - **AUDIENCE**: this is not a vertx documentation, this readme intends
   to explain only the clojure api
 
-Example code on `resources/user.clj` file.
+~~Example code on `resources/user.clj` file.~~
+
+> view the test or check the below code
 
 
 ## Install
@@ -14,13 +16,13 @@ Example code on `resources/user.clj` file.
 Using `deps.edn`:
 
 ```clojure
-vertx-clojure/vertx {:mvn/version "0.0.0-SNAPSHOT"}
+vertx-clojure/vertx {:mvn/version "0.0.3-SNAPSHOT"}
 ```
 
 Using Leiningen:
 
 ```clojure
-[vertx-clojure/vertx "0.0.0-SNAPSHOT"]
+[vertx-clojure/vertx "0.0.3-SNAPSHOT"]
 ```
 
 ## User Guide
@@ -240,7 +242,7 @@ interceptors as pluggable pieces:
 
 ## Actor
 
-actor is mocked from the erlang-otp, but not actually same thing. 
+actor is mocked from the erlang-otp, but not actually same thing.
 
 here is an example:
 
@@ -252,7 +254,7 @@ here is an example:
 (let [system (vc/system)
       record-score (fn [msg ctx suc err]
             ;; normally we use the JsonObject to carry the msg, but the clojure's map work too. here is a example of the JsonObject msg
-            (let [ 
+            (let [
                    body (:body msg)
                    name (.get body "name")
                    score (.getLong body "score")
@@ -268,10 +270,10 @@ here is an example:
          (let [ body   (:body msg)
                 act    (:act body)
                 modify (:value body)]
-            (suc {:compute 
+            (suc {:compute
                    ;; use the compute so that it should be run at event-loop. it's pretty useful if you need to get the data at worker-thread and modify the ctx with concurrent-protect
                     (fn [{:keys [sum] :as ctx}]
-                      {:sum 
+                      {:sum
                         (if (= :add act)
                           (+ sum modify)
                           (- sum modify))})
@@ -283,10 +285,10 @@ here is an example:
                         ;; use quote to hot-reload but it won't work with let bound var
                         "hot-code"  `hot-code}
                        {:on-start (fn [ctx] {:sum 0})})
-      
+
       ]
       (vc/deploy! actor)
-      (promesa.core/then 
+      (promesa.core/then
          (vertx.eventbus/request! "add-score" (io.vertx.core.json.JsonObject. {"name" "John" "score" 95}))
          (fn [r]
         (promesa.core/then (vertx.exentbus/request! "modify" {:act :add :value 0})
@@ -300,7 +302,7 @@ here is an example:
 the actor fn will deal with arguments [msg ctx succ-res-fn err-res-fn], so that you can easily reply the msg at other thread like at `execute-blocking` clourse. if there is error throw out, that will be taken as you invoke the err-res-fn and fail the msg-reply.
 
 - msg key -> `[:headers :body ^IFn :reply ^io.vertx.core.Message :self]`
-- actor context, it's actually store at verticle-context's "state". 
+- actor context, it's actually store at verticle-context's "state".
     you can get it by `(.get (vertx.core/current-context) "state")`
 
 ## Web build by Route
@@ -322,7 +324,7 @@ so here is some api like elixir-phoenix-style(no, no, no the style). it would bu
       ))
     )
   )
-  
+
 (ns gallery
   (:require [vertx.promise :as p]))
 
@@ -339,12 +341,13 @@ so here is some api like elixir-phoenix-style(no, no, no the style). it would bu
        ;; i'm not impl the set context-type here now, see the io.vertx.http.HttpServerResponse please
        (p/then (impl-context-type (:response request))))
    ))
-  
-(def sub-route [[:GET  "/api/gallery" view-gallery]
+
+;; these api require short uri. but in fact the router could extend it by :context see the below code please
+(def sub-route [[:GET  "/gallery" view-gallery]
                 ;; use quote to allow hot-reload
-                [:POST "/api/gallery" 'upload-gallery]
+                [:POST "/gallery" 'upload-gallery]
                 ;; the path-argument-extrater will set the file-name into param by read the uri. the regex will set true. the handler is just io.vertx.core.Handler<HttpServerRequest> like the vert.x own BodyHandler see io.vertx.ext.web.BodyHandler.
-                {:path ["/api/gallery/(\\d*)"] :regex true :handler [path-argument-extrater] :respond view-gallery}
+                {:path ["/gallery/(\\d*)"] :regex true :handler [path-argument-extrater] :respond view-gallery}
                 ])
 
 (ns server
@@ -353,14 +356,28 @@ so here is some api like elixir-phoenix-style(no, no, no the style). it would bu
             [vertx.web :as web]))
 
 
+;; INFO here is a handler example, it'll check the user login
+(defn check-user-login
+    "check the RoutingContext for further info"
+    [req]
+    (let [rtx (:routing-context req)
+          user (.user rtx)]
+          (if user
+              (.next rtx)
+              (.json rtx (io.vertx.core.json.JsonObject. {"code" -1 "msg" "not-login"})))))
+
 ;; that's a littler cool than the origin vert'x style isn't it?
 (def router-handler
-  (vertx.web/build-route 
+  (vertx.web/build-route
    [["/api/version" (fn [request] (vertx.promise/resolved {"code" 0 "data" "v0.0.1"}))]
     ;; use symbol to let user/login be able to hot-reload (it contain 200ms cache)
     [:POST "/api/user/login" `user/login]
+    ;; context'll add the uri prefix into the real uri api
+    {:context "/api/v2"
     ;; handler will deal as respond but require to invoke next
-   {:routes gallery/sub-route :handler []}]
+     :handler [check-user-login]
+    ;; route add the sub route(not sub-router)
+     :routes gallery/sub-route}]
    ))
 ;; create a vertx herer
 (def s (vertx.core/system))
@@ -378,4 +395,3 @@ This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ```
-
