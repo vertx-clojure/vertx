@@ -273,8 +273,8 @@
                 :log-requests?   false
                 :time-response?  true}})))
 
-(defn ->map [multi-map]
-  "dangeroups api that may cost all memory"
+(defn ->map "dangeroups api that may cost all memory"
+  [multi-map]
   (if multi-map
     (reduce
      (fn [m [k i]]
@@ -297,8 +297,7 @@
               :or   {delete-uploads? true
                      upload-dir      "/tmp/vertx.uploads"
                      log-requests?   false
-                     time-response?  true}
-              :as   options}]
+                     time-response?  true}}]
   (when time-response? (.handler route (ResponseTimeHandler/create)))
   (when log-requests? (.handler route (LoggerHandler/create)))
   (.handler route
@@ -325,6 +324,7 @@
    {:keys [name
            order
            blocking
+           context
            regex
            uri
            method
@@ -333,9 +333,9 @@
            handler
            respond
            custom
-           options]
-    :as   config}]
-  (let [^Route r (.route router')]
+           options]}]
+  (let [r ^Router (.route router')
+        context (or context "")]
     ;; set the default handler
     (set-default-handler r options)
     ;; set the path first
@@ -343,8 +343,8 @@
       (reduce
        (fn [_ uri]
          (if regex
-           (.pathRegex r uri)
-           (.path r uri)))
+           (.pathRegex r (str context uri))
+           (.path r (str context uri))))
        r uri))
 
     ;; set the sub-router
@@ -398,43 +398,39 @@
     (when order
       (.order (int r)))
     (if routes
-      (add-route router' routes (or handler []))
+      (add-route router' routes context (or handler []))
       router')))
 
 (defn- register-route
   "register the route with argument, see the source for further detail"
-  [handlers]
-  (fn
-    [^Router router' list-or-map]
+  [uri-prefix handlers]
+  (fn [^Router router' list-or-map]
     (if (list'? list-or-map)
       ;; if is list build it into map and recur invoke
-      ((register-route handlers) router' (apply build-register-route list-or-map))
-      (if (empty? handlers)
+      ((register-route uri-prefix handlers) router' (apply build-register-route list-or-map))
+      (if (and (empty? handlers) (empty? uri-prefix))
         (register-route' router' list-or-map)
         (register-route' router'
-                         (assoc list-or-map
-                                :handler (concat handlers (-> (:handler list-or-map) (or [])))))))))
+                         (-> list-or-map
+                             (assoc :handler (concat handlers (-> (:handler list-or-map) (or []))))
+                             (assoc :context (str uri-prefix (-> (:context list-or-map) (or ""))))))))))
 
 (defn add-route
   "add route, a little pheonix-like api.
   accept a list [[METHOD \"path\" HANDLER]], HANDLER -> context -> param -> Future
   this is handle by multi Route dealer that will accept like [METHOD:Keyword PATH:String HANDLER:Fn] and each of it could be list like [[METHOD]:[Keybord] [PATH]:[String] [HANDLER]:Fn]. WARN: when HANDLER is LIST, only the last one should return Future others it just handle the context
   args could be the Map {:routes [[same as out-side]] :name \"route-name\" :order 1 :uri path:String :blocking true :regex true :router [sub-route] :handler [Fn] :respond Fn}, for example (add-route router {:uri [\"/api/request\"] :method [:GET] :router [sub-router] :blocking false :handler [JsonContextHandler] :respond response-to-api :custom custom-Fn}), custom-Fn should be able to deal with route"
-  ([router route-list]
-   (reduce (register-route [])
-           router
-           route-list))
-  ([router route-list handlers]
-   (reduce (register-route handlers)
-           router
-           route-list)))
+  [router uri-prefix route-list handlers]
+  (reduce (register-route uri-prefix handlers)
+          router
+          route-list))
 
 (defn build-route
   "create a Fn for vertx.web/handle use, deps on add-route"
   [route-config]
   (fn [router]
     ;; set the default handler for the router
-    (add-route router route-config)))
+    (add-route router "" route-config [])))
 
 (defn handle-error
   "create an error-handler, invoke like (error-handler status, (fn [error routing-context] ...)"
