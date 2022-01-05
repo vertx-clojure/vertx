@@ -99,7 +99,7 @@
   ;; TODO: implement the wire encode/decode using transit+msgpack
   (reify MessageCodec
     (encodeToWire [_ buffer data] (.appendString ^io.vertx.core.buffer.Buffer buffer (io.vertx.core.json.Json/encode data)))
-    (decodeFromWire [_ pos buffer] (io.vertx.core.json.Json/decodeValue buffer))
+    (decodeFromWire [_ pos buffer] (io.vertx.core.json.Json/decodeValue (.getBuffer buffer pos (.length buffer))))
     (transform [_ data] data)
     (name [_] "clj:msgpack")
     (^byte systemCodecID [_] (byte -1))))
@@ -119,7 +119,7 @@
     (.setCodecName opts (or codec "clj:msgpack"))
     (when local? (.setLocalOnly opts true))
     (reduce
-     (fn [o [i v]]
-       (when (not (and (= i :codec) (= i :local?)))
-         (.addHeader ^DeliveryOptions o (toStr i) (str v))))
-     opts o)))
+      (fn [o [i v]]
+        (when (not (and (= i :codec) (= i :local?)))
+          (.addHeader ^DeliveryOptions o (toStr i) (str v))))
+      opts o)))
