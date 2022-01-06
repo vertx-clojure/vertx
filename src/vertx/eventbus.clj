@@ -6,8 +6,13 @@
 
 (ns vertx.eventbus
   (:require [promesa.core :as p]
+            [msgpack.core :refer [pack unpack]]
+            [msgpack.macros :refer [extend-msgpack]]
             [vertx.util :as vu])
   (:import io.vertx.core.Vertx
+           io.vertx.core.buffer.Buffer
+           io.vertx.core.json.JsonObject
+           io.vertx.core.json.JsonArray
            io.vertx.core.Handler
            io.vertx.core.Context
            io.vertx.core.eventbus.Message
@@ -26,22 +31,25 @@
 (defn consumer
   "f :: Vertx -> Msg -> ReplyMsg, and it will resume the msg handler"
   [vsm topic f]
-  (let [^EventBus bus (resolve-eventbus vsm)
+  (let [^EventBus bus             (resolve-eventbus vsm)
         ^MessageConsumer consumer (.consumer bus ^String (str topic))]
-    (.handler consumer (reify Handler
-                         (handle [_ msg]
-                           (.pause consumer)
-                           (-> (p/do! (f vsm (build-message msg)))
-                               (p/handle (fn [res err]
-                                           (.resume consumer)
-                                           (.reply msg (or res err)
-                                                   (opts->delivery-opts {}))))))))
+    (.handler consumer
+              (reify
+                Handler
+                (handle [_ msg]
+                  (.pause consumer)
+                  (-> (p/do! (f vsm (build-message msg)))
+                      (p/handle
+                       (fn [res err]
+                         (.resume consumer)
+                         (.reply msg (or res err)
+                                 (opts->delivery-opts {}))))))))
     consumer))
 
 (defn publish!
   ([vsm topic msg] (publish! vsm topic msg {}))
   ([vsm topic msg opts]
-   (let [bus (resolve-eventbus vsm)
+   (let [bus  (resolve-eventbus vsm)
          opts (opts->delivery-opts opts)]
      (.publish ^EventBus bus
                ^String (str topic)
@@ -52,7 +60,7 @@
 (defn send!
   ([vsm topic msg] (send! vsm topic msg {}))
   ([vsm topic msg opts]
-   (let [bus (resolve-eventbus vsm)
+   (let [bus  (resolve-eventbus vsm)
          opts (opts->delivery-opts opts)]
      (.send ^EventBus bus
             ^String (str topic)
@@ -63,9 +71,9 @@
 (defn request!
   ([vsm topic msg] (request! vsm topic msg {}))
   ([vsm topic msg opts]
-   (let [bus (resolve-eventbus vsm)
+   (let [bus  (resolve-eventbus vsm)
          opts (opts->delivery-opts opts)
-         d (p/deferred)]
+         d    (p/deferred)]
      (.request ^EventBus bus
                ^String (str topic)
                ^Object msg
@@ -89,17 +97,40 @@
 (defn- resolve-eventbus
   [o]
   (cond
-    (instance? Vertx o) (.eventBus ^Vertx o)
-    (instance? Context o) (resolve-eventbus (.owner ^Context o))
+    (instance? Vertx o)    (.eventBus ^Vertx o)
+    (instance? Context o)  (resolve-eventbus (.owner ^Context o))
     (instance? EventBus o) o
-    :else (throw (ex-info "unexpected argument" {}))))
+    :else                  (throw (ex-info "unexpected argument" {}))))
+
+(extend-msgpack Buffer
+                12
+                [b] (pack (.getBytes ^Buffer b))
+                [bytes] (Buffer/buffer (unpack bytes)))
+
+(extend-msgpack JsonObject
+                10
+                [o] (pack (.getMap ^JsonObject o))
+                [bytes] (JsonObject.  (unpack bytes)))
+(extend-msgpack JsonArray
+                11
+                [o] (pack (.getList ^JsonArray o))
+                [bytes] (JsonArray. (unpack bytes)))
 
 (defn- build-message-codec
   []
-  ;; TODO: implement the wire encode/decode using transit+msgpack
-  (reify MessageCodec
-    (encodeToWire [_ buffer data] (.appendString ^io.vertx.core.buffer.Buffer buffer (io.vertx.core.json.Json/encode data)))
-    (decodeFromWire [_ pos buffer] (io.vertx.core.json.Json/decodeValue (.getBuffer buffer pos (.length buffer))))
+  (reify
+    MessageCodec
+    (encodeToWire [_ buffer data]
+      (try
+        (.appendBytes ^io.vertx.core.buffer.Buffer buffer (pack data))
+        (catch Exception e
+          (.appendString ^io.vertx.core.buffer.Buffer buffer (io.vertx.core.json.Json/encode data)))))
+    (decodeFromWire [_ pos buffer]
+      (try
+        (unpack (.getBytes ^io.vertx.core.buffer.Buffer buffer pos (.length buffer)))
+        (catch Exception e
+          (io.vertx.core.json.Json/decodeValue
+           (.getBuffer ^io.vertx.core.buffer.Buffer buffer pos (.length buffer))))))
     (transform [_ data] data)
     (name [_] "clj:msgpack")
     (^byte systemCodecID [_] (byte -1))))
@@ -107,9 +138,9 @@
 (defn- build-message
   [^Message msg]
   (let [metadata {::reply-to (.replyAddress msg)
-                  ::send? (.isSend msg)
-                  ::address (.address msg)}
-        body (.body msg)]
+                  ::send?    (.isSend msg)
+                  ::address  (.address msg)}
+        body     (.body msg)]
     (Msg. body metadata nil)))
 
 (defn opts->delivery-opts
@@ -119,7 +150,7 @@
     (.setCodecName opts (or codec "clj:msgpack"))
     (when local? (.setLocalOnly opts true))
     (reduce
-      (fn [o [i v]]
-        (when (not (and (= i :codec) (= i :local?)))
-          (.addHeader ^DeliveryOptions o (toStr i) (str v))))
-      opts o)))
+     (fn [o [i v]]
+       (when (not (and (= i :codec) (= i :local?)))
+         (.addHeader ^DeliveryOptions o (toStr i) (str v))))
+     opts o)))
