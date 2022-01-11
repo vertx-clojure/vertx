@@ -55,6 +55,7 @@
    [funcool/promesa]
    [metosin/reitit-core]
    [metosin/sieppari]]
+  :aot :all
   :profiles
   {:test {:dependencies [[org.clojure/tools.namespace]
                          [mount/mount]
