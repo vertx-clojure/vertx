@@ -435,7 +435,7 @@
           route-list))
 
 (defn build-route
-  "create a Fn for vertx.web/handle use, deps on add-route"
+  "create a Fn for vertx.web/handler use, deps on add-route"
   [route-config]
   (fn [router]
         ;; set the default handler for the router
