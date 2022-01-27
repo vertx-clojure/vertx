@@ -115,9 +115,10 @@
 
 (defn serve "serve a http service, accept {sys:Vertx port:int route:(web/build-route)}"
   [{:keys [sys port route]}]
-  (vh/server (if sys sys (vc/system))
+  (let [sys (if sys sys (vc/system))]
+  (vh/server sys
              {:port port
-              :handler (handler sys route)}))
+              :handler (handler sys route)})))
 
 (defn assets "build a simple route of assets"
   ([path] (assets path {}))
