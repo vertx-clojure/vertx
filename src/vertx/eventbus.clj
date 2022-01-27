@@ -121,19 +121,21 @@
                 [map']
                 (let [out (java.io.ByteArrayOutputStream.)]
                   (.writeBytes out (pack (.size map')))
-                  (reduce #(doto out
-                             (.writeBytes (pack (.getKey %2)))
-                             (.writeBytes (pack (.getValue %2))))
-                          out map')
+                  (reduce
+                   #(doto out
+                      (.writeBytes (pack (.getKey %2)))
+                      (.writeBytes (pack (.getValue %2))))
+                   out map')
                   (.toByteArray out))
-                [bytes] (let [map' (java.util.HashMap.)
-                              in (java.io.ByteArrayInputStream. bytes)
-                              size (unpack in)]
-                          (loop [i 0]
-                            (when (< i size)
-                              (.put map' (unpack in) (unpack in))
-                              (recur (+ i 1))))
-                          map'))
+                [bytes]
+                (let [map' (java.util.HashMap.)
+                      in   (java.io.ByteArrayInputStream. bytes)
+                      size (unpack in)]
+                  (loop [i 0]
+                    (when (< i size)
+                      (.put map' (unpack in) (unpack in))
+                      (recur (+ i 1))))
+                  map'))
 
 (extend-msgpack java.util.List
                 13
@@ -143,14 +145,15 @@
                   (reduce #(.writeBytes out (pack %2))
                           out list')
                   (.toByteArray out))
-                [bytes] (let [list' (java.util.ArrayList.)
-                              in (java.io.ByteArrayInputStream. bytes)
-                              size (unpack in)]
-                          (loop [i 0]
-                            (when (< i size)
-                              (.add list' (unpack in))
-                              (recur (+ i 1))))
-                          list'))
+                [bytes]
+                (let [list' (java.util.ArrayList.)
+                      in    (java.io.ByteArrayInputStream. bytes)
+                      size  (unpack in)]
+                  (loop [i 0]
+                    (when (< i size)
+                      (.add list' (unpack in))
+                      (recur (+ i 1))))
+                  list'))
 
 (extend-msgpack java.util.Set
                 14
@@ -160,25 +163,29 @@
                   (reduce #(.writeBytes out (pack %2))
                           out list')
                   (.toByteArray out))
-                [bytes] (let [list' (java.util.HashSet.)
-                              in (java.io.ByteArrayInputStream. bytes)
-                              size (unpack in)]
-                          (loop [i 0]
-                            (when (< i size)
-                              (.add list' (unpack in))
-                              (recur (+ i 1))))
-                          list'))
+                [bytes]
+                (let [list' (java.util.HashSet.)
+                      in    (java.io.ByteArrayInputStream. bytes)
+                      size  (unpack in)]
+                  (loop [i 0]
+                    (when (< i size)
+                      (.add list' (unpack in))
+                      (recur (+ i 1))))
+                  list'))
 
-(defn- build-message-codec
+(defn build-message-codec
   []
   (reify
     MessageCodec
     (encodeToWire [_ buffer data]
       (try
-        (.appendBytes ^io.vertx.core.buffer.Buffer buffer (pack data))
+        (let [bytes (pack data)]
+          (.appendBytes ^io.vertx.core.buffer.Buffer buffer bytes))
+		               ;;(println "[MSG-PACK] encode Buffer -> " (String. bytes))
         (catch Exception e
           (.appendString ^io.vertx.core.buffer.Buffer buffer (io.vertx.core.json.Json/encode data)))))
     (decodeFromWire [_ pos buffer]
+	                 ;;(println "decode Buffer -> " (-> buffer (.getBuffer pos (.length buffer)) (.toString)))
       (try
         (unpack (.getBytes ^io.vertx.core.buffer.Buffer buffer pos (.length buffer)))
         (catch Exception e
