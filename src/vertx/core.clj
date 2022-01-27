@@ -77,7 +77,7 @@
 
      (.executeBlocking ctx wrap-task ordered h)
      ;; return the handle promise
-     d)))
+     (vp/from d))))
 
 (defn handle-on-context
   "Attaches the context (current if not explicitly provided) to the

@@ -116,6 +116,9 @@
 (defn serve "serve a http service, accept {sys:Vertx port:int route:(web/build-route)}"
   [{:keys [sys port route]}]
   (let [sys (if sys sys (vc/system))]
+    ;; add a default error caught
+    (.exceptionHandler sys (vu/fn->handler
+                     (fn [e] (println "[Vertx] Error" e))))
   (vh/server sys
              {:port port
               :handler (handler sys route)})))
