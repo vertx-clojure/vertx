@@ -185,7 +185,34 @@ the user code (if you have suggestions, please open an issue).
 that converts a plain clojure function into raw `Handler` instance.
 
 
-### Web Server (vertx.web)
+### Web Server (vertx.web**
+
+- Easy Web Provider
+
+There is some easy http server at Node or Python, why can't we have one?
+
+> I Know there is ring-jetty whatever im familiar with vertx more. lol
+
+```clojure
+(require '[vertx.web :refer [serve build-route assets]]
+(require '[vertx.promise :refer [resolved])
+(require '[my-api.user :refer [login route]])
+(require '[vertx.core :refer [system]])
+;; serve the http of api
+(serve {:port 8080
+        :route (build-route [["/api/hello" (fn [req] (resolved {"greet" "hello"}))]
+                             ["/api/login" `login]])})
+;; serve the http of html (static one)
+(serve {:port 8888
+        :route (assets "/var/run/html")})
+
+;; use a specify Vertx to share same eventbus or the other vertx function
+(def sys (system))
+(serve {:port 8081
+        :sys sys
+        :route route})
+```
+
 
 **STATUS**: alpha
 
