@@ -231,7 +231,7 @@
   (when (:reply data)
     (if (:opt data)
       (.reply event (:reply data) (vxe/opts->delivery-opts (:opt data)))
-      (.reply event (:reply data))))
+      (.reply event (:reply data) (vxe/opts->delivery-opts {}))))
   ;; for wrong use of resolve
   (when
    (or (not (map? data))
@@ -253,9 +253,9 @@
 (defn- build-listen-on-topics
   "return a fn that is used as reduce to listen on topic and handle event.
   event -> {:headers :body :address :reply(fn [data]) :self(io.vertx.core.Event)}"
-  [ctx]
+  [ctx local]
   (let [vertx         (vu/resolve-system ctx)
-        bus           (.eventBus vertx)
+        bus           ^io.vertx.core.eventbus.EventBus (.eventBus vertx)
         convert-event (fn [event]
                         {:headers (.headers event)
                          :body    (.body event)
@@ -267,34 +267,38 @@
     ;; this state is not to be used at event
     (fn [cnt [addr handler]]
       ;; listen the event instead of the eventbus because the origin one will auto response
-      (.consumer bus (str addr)
-                 (vu/fn->handler
-                  (fn [event]
-                    ;; handle the response, use the promise to handle response
-                    ;; provice the resolve!/reject! to handle the result so that you can return at another thread(working-thread) and make a fast reply.
-                    (let [ctx   (.getOrCreateContext vertx)
-                          s     (p/deferred)
-                          c     (p/then s (fn [res] (merge-and-reply ctx event res)))
-                          _     (p/catch c
-                                         (fn [e]
-                                           (.fail event -1 (str e))
-                                           (when-let [handler (.exceptionHandler vertx)]
-                                             (.handle handler e))))]
-                      (try
-                        (let [handler (if (fn? handler) handler (cache ctx handler))]
-                          (handler (convert-event event) (.get ctx "state")
-                                   ;; use lambda to remove promesa deps
-                                   (fn [res]
-                                     (p/resolve! s res))
-                                   (fn [e] (p/reject! s e))))
-                        (catch Exception e
-                          (p/reject! s e)))))))
+      (let [handler' (vu/fn->handler
+                      (fn [event]
+                            ;; handle the response, use the promise to handle response
+                            ;; provice the resolve!/reject! to handle the result so that you can return at another thread(working-thread) and make a fast reply.
+                        (let [ctx   (.getOrCreateContext vertx)
+                              s     (p/deferred)
+                              c     (p/then s (fn [res] (merge-and-reply ctx event res)))
+                              _     (p/catch c
+                                             (fn [e]
+                                               (.fail event -1 (str e))
+                                               (when-let [handler (.exceptionHandler vertx)]
+                                                 (.handle handler e))))]
+                          (try
+                            (let [handler (if (fn? handler) handler (cache ctx handler))]
+                              (handler (convert-event event) (.get ctx "state")
+                                                 ;; use lambda to remove promesa deps
+                                       (fn [res]
+                                         (p/resolve! s res))
+                                       (fn [e] (p/reject! s e))))
+                            (catch Exception e
+                              (p/reject! s e))))))]
+        (if local
+          (.localConsumer bus (str addr)
+                          handler')
+          (.consumer bus (str addr)
+                     handler')))
       ;; register the handler at ctx
       (+ cnt 1))))
 
 (defn- build-actor
   [topics
-   {:keys [on-error on-stop on-start]
+   {:keys [on-error on-stop on-start local]
     :or   {on-error (constantly nil)
            on-start (constantly {})
            on-stop  (constantly nil)}}]
@@ -302,7 +306,7 @@
    [(-on-start [ctx]
       (let [inital-state (if (fn? on-start) (on-start ctx) on-start)
             state        (if (nil? inital-state) {} inital-state)
-            listen       (build-listen-on-topics ctx)]
+            listen       (build-listen-on-topics ctx local)]
         (reduce listen 0 topics)
         (.put ctx "state" state)
         state))]

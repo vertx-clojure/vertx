@@ -19,7 +19,9 @@
    [reitit.core :as rt]
    [vertx.http :as vh]
    [vertx.promise :as vp]
-   [vertx.util :as vu])
+   [vertx.util :as vu]
+   [vertx.core :as vc]
+   [vertx.web :as web])
   (:import
    clojure.lang.IPersistentMap
    clojure.lang.Keyword
@@ -111,7 +113,13 @@
          #((println e)
            (.end (.response %1) "System Fatal ERROR, PLEASE REPORT TO ADMIN")))))))
 
-(defn assets
+(defn serve "serve a http service, accept {sys:Vertx port:int route:(web/build-route)}"
+  [{:keys [sys port route]}]
+  (vh/server (if sys sys (vc/system))
+             {:port port
+              :handler (handler sys route)}))
+
+(defn assets "build a simple route of assets"
   ([path] (assets path {}))
   ([path {:keys [root] :or {root "public"} :as options}]
    (fn [^Router router]
