@@ -68,7 +68,8 @@
      :fail            (fn ([e] (.fail routing-context e))
                         ([status e] (.fail routing-context (int status) e)))
      :routing-context routing-context}))
-
+(declare  handle-error)
+;; -- for the dynamic api
 (defn- cached-router
   "return a cached router that is dynamic generated, with symbol handler"
   [vsm handlers]
@@ -115,13 +116,19 @@
 
 (defn serve "serve a http service, accept {sys:Vertx port:int route:(web/build-route)}"
   [{:keys [sys port route]}]
-  (let [sys (if sys sys (vc/system))]
+  (let [sys (if sys sys (vc/system))
+        default-error-print (handle-error 500 (fn [e r]
+                                                (println "[HTTP] ERROR" e)
+                                                (.json r {"error" (.getMessage e)})))
+        route (if (seq? route)
+                (concat [default-error-print] route)
+                (conj [default-error-print] route))]
     ;; add a default error caught
     (.exceptionHandler sys (vu/fn->handler
-                     (fn [e] (println "[Vertx] Error" e))))
-  (vh/server sys
-             {:port port
-              :handler (handler sys route)})))
+                            (fn [e] (println "[Vertx] Error" e))))
+    (vh/server sys
+               {:port port
+                :handler (apply handler (concat [sys] route))})))
 
 (defn assets "build a simple route of assets"
   ([path] (assets path {}))
