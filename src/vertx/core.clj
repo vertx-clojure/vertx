@@ -20,6 +20,7 @@
    io.vertx.core.Vertx
    io.vertx.core.VertxOptions
    io.vertx.core.json.JsonObject
+   io.vertx.core.json.JsonArray
    java.util.function.Supplier))
 
 (declare opts->deployment-options)
@@ -39,6 +40,12 @@
 (s/def ::system-options
   (s/keys :opt-un [:vertx.core$system/threads
                    :vertx.core$system/on-error]))
+
+(defn json "convert map or array into the json one" [object-or-array]
+  (cond
+    (map? object-or-array) (JsonObject. object-or-array)
+    (seqable? object-or-array) (JsonArray. object-or-array)
+    :else (throw (RuntimeException. "not map or array object"))))
 
 (defn system
   "Creates a new vertx actor system instance."
