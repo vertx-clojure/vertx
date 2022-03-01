@@ -94,7 +94,7 @@
 ;; --- Impl
 
 (defn- opts->http-server-options
-  [{:keys [host port]}]
+  [{:keys [host port custom]}]
   (let [opts (HttpServerOptions.)]
     (.setReuseAddress opts true)
     (.setReusePort opts true)
@@ -102,6 +102,7 @@
     (.setTcpFastOpen opts true)
     (when host (.setHost opts host))
     (when port (.setPort opts port))
+    (when custom (custom opts))
     opts))
 
 (defn- resolve-handler
