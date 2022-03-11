@@ -47,10 +47,10 @@
 
 (defn- ->request
   [^HttpServerRequest request]
-  {:method (-> request .rawMethod .toLowerCase keyword)
-   :path (.path request)
-   :headers (->headers (.headers request))
-   ::request request
+  {:method    (-> request .method .name .toLowerCase keyword)
+   :path      (.path request)
+   :headers   (->headers (.headers request))
+   ::request  request
    ::response (.response request)})
 
 (defn handler
@@ -71,21 +71,30 @@
 
 (defn server
   "Starts a vertx http server."
-  [vsm {:keys [handler] :as options}]
+  [vsm {:keys [handler error websocket close] :as options}]
   (s/assert ::server-options options)
   (let [^Vertx vsm (vu/resolve-system vsm)
         ^HttpServerOptions opts (opts->http-server-options options)
         ^HttpServer srv (.createHttpServer vsm opts)
-        ^Handler handler (resolve-handler handler)]
+        ^Handler handler (resolve-handler handler)
+        error (if error error (vu/fn->handler (fn [e] (println "error: " e))))
+        websocket (if websocket websocket (vu/fn->handler (fn [_])))
+        close (if close close (vu/fn->handler (fn [_])))]
     (doto srv
       (.requestHandler handler)
-      (.listen))
+      (.exceptionHandler error)
+      (.webSocketHandler websocket)
+      (.close close))
+    (-> (.listen srv)
+        (.onFailure error)
+        (.onSuccess (vu/fn->handler (fn [server]
+                                      (println "Http Service[" (.actualPort srv) "] started")))))
     srv))
 
 ;; --- Impl
 
 (defn- opts->http-server-options
-  [{:keys [host port]}]
+  [{:keys [host port custom]}]
   (let [opts (HttpServerOptions.)]
     (.setReuseAddress opts true)
     (.setReusePort opts true)
@@ -93,6 +102,7 @@
     (.setTcpFastOpen opts true)
     (when host (.setHost opts host))
     (when port (.setPort opts port))
+    (when custom (custom opts))
     opts))
 
 (defn- resolve-handler
